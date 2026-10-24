@@ -1,0 +1,16 @@
+# Rust
+target/
+backend/target/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Frontend
+node_modules/
+.next/
+
+# OS and editor
+.DS_Store
+.vscode/
