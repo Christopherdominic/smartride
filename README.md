@@ -1,26 +1,139 @@
 # SmartRide
 
-**One postcode. Every delivery.** A Rust + Next.js hackathon prototype for postcode-powered delivery coordination in Nigeria.
+### One postcode. Every delivery.
 
-**Live demo:** https://smartride-kappa.vercel.app/demo
+**Postcode-powered delivery coordination for Nigeria’s last mile.**
 
-**API / Swagger:** https://smartride-api-bfrg.onrender.com/docs
+SmartRide helps merchants create deliveries from digital postcodes, assign riders, track parcel progress, and confirm the final handoff with a one-time password. Built as a working hackathon MVP, it connects a Next.js dashboard to a Rust API and PostgreSQL persistence.
 
-Deployed on Vercel Hobby, Render Free, and Neon Free; the complete public browser workflow was verified on 25 October 2026. Render sleeps after idle periods, so allow about a minute for the first API request to wake it.
+[**Launch the demo**](https://smartride-kappa.vercel.app/demo) · [Merchant dashboard](https://smartride-kappa.vercel.app/dashboard) · [Rider workspace](https://smartride-kappa.vercel.app/rider) · [API documentation](https://smartride-api-bfrg.onrender.com/docs)
 
-SmartRide connects fictional digital postcode resolution, merchant delivery creation, rider dispatch, tracking, and OTP proof of delivery. All demo actions call the Rust API and persist in PostgreSQL.
+> **Demo data:** This public prototype uses fictional postcodes, addresses, and shared merchant/rider records. Use sample recipient details only. Live NIPOST integration is unconfigured, pending verified official documentation and credentials.
 
-## Run locally
+## Overview
 
-Requirements: Rust 1.97.1 or newer, Node 22, npm, Docker Compose (or PostgreSQL 16 with pgcrypto).
+Last-mile delivery depends on identifying the destination and coordinating each handoff. SmartRide demonstrates how digital postcode resolution can become the starting point for a connected delivery workflow:
+
+```text
+Digital postcode → Resolved address → Delivery order → Rider assignment
+                                                     ↓
+Proof of delivery ← OTP confirmation ← Delivery tracking
+```
+
+The project explores the application of Nigeria’s NIPOST National Digital Alphanumeric Postcode System (NDAPS) concept to merchant and logistics operations. Its mock postcode fixtures are demonstration conventions, not verified NIPOST data or an official NDAPS validation specification.
+
+## Implemented capabilities
+
+| Area | Capabilities |
+| --- | --- |
+| Merchant operations | Delivery creation, recent deliveries, status breakdowns, dashboard statistics, and delivery details |
+| Postcode resolution | Three fictional postcode fixtures, address previews, and a provider abstraction for future official integration |
+| Rider coordination | Rider registration, workload visibility, assignment, and assigned-delivery views |
+| Delivery tracking | Enforced lifecycle transitions, terminal failure handling, and persisted event timelines |
+| Proof of delivery | Secure six-digit OTP generation, hashed storage, expiry, attempt limits, and replay prevention |
+| Interactive demo | Guided delivery creation followed by assignment, tracking, and OTP confirmation through real API calls |
+| Developer tooling | OpenAPI specification, Swagger UI, SQLx migrations, Docker image, and integration test scripts |
+
+### Delivery lifecycle
+
+```text
+created → assigned → picked_up → out_for_delivery → delivered
+```
+
+Active deliveries can be marked as `failed`. Invalid transitions are rejected, and a delivery can reach `delivered` only after successful OTP verification. Status changes and their events are committed atomically.
+
+## Live deployment
+
+| Component | Platform | Public URL |
+| --- | --- | --- |
+| Frontend | Vercel Hobby | [smartride-kappa.vercel.app](https://smartride-kappa.vercel.app) |
+| Rust API | Render Free | [Health endpoint](https://smartride-api-bfrg.onrender.com/health) |
+| API explorer | Swagger UI | [Interactive documentation](https://smartride-api-bfrg.onrender.com/docs) |
+| Database | Neon Free | Dedicated PostgreSQL 16 demo project; accessed only by the backend |
+
+The complete public browser workflow was verified on **25 October 2026**. See the [validation record](docs/VALIDATION.md) for executed checks and deployment evidence.
+
+**Free-tier availability:** Render sleeps after idle periods. Allow approximately one minute for the first API request to wake the service before presenting the demo. Hosting quotas also apply.
+
+## Three-minute demo
+
+1. Open the [guided demo](https://smartride-kappa.vercel.app/demo). The dedicated **Lagos Market • Demo** merchant is selected.
+2. Resolve one of the fictional postcodes below to preview its address.
+3. Use the supplied sample recipient details, describe the parcel, and create the delivery.
+4. Select a rider and click **Assign rider**.
+5. Click **Mark parcel picked up**, then **Start delivery**.
+6. Click **Generate demo OTP** and enter the displayed six-digit code.
+7. Click **Confirm delivery**. Review the completed timeline and confirmed proof of delivery.
+8. Visit the merchant dashboard for updated statistics, or the rider workspace to view assigned deliveries.
+
+| Demo postcode | Fictional destination |
+| --- | --- |
+| `EK01A03FK01` | Demo Building, Test District, Nigeria |
+| `LA01A03IK01` | Fictional Market House, Demo Lagos District, Nigeria |
+| `AB01A03FC01` | Fictional Unity House, Demo Abuja District, Nigeria |
+
+Seeded delivered examples are labeled as having no actual OTP confirmation. Deliveries completed through the workflow display confirmed OTP proof.
+
+## Technology
+
+| Layer | Stack |
+| --- | --- |
+| Backend | Rust, Axum, Tokio, SQLx, Reqwest |
+| Frontend | Next.js App Router, TypeScript, React, Tailwind CSS, Lucide icons |
+| Database | PostgreSQL 16 with pgcrypto |
+| Infrastructure | Docker, Render, Neon, Vercel |
+| API documentation | OpenAPI 3.0 and Swagger UI |
+
+## Repository structure
+
+```text
+backend/
+  src/                  API handlers, postcode providers, and delivery workflow
+  migrations/           Versioned PostgreSQL migrations
+  Dockerfile            Production image and built-in health probe
+frontend/
+  app/                  Landing page, merchant dashboard, rider workspace, demo
+  components/           Shared interface components and workflow controls
+  lib/                  Typed API client and response models
+docs/
+  DEPLOYMENT.md         Hosting configuration and exact redeployment commands
+  VALIDATION.md         Local, container, and public verification results
+  openapi.json          API specification
+scripts/                API, browser, security, and container verification
+render.yaml             Free Render service configuration
+Dockerfile              Symlink to backend/Dockerfile for root-context builds
+```
+
+## Local development
+
+### Prerequisites
+
+- Rust **1.97.1 or newer**; the container uses a digest-pinned Rust 1.98.0 toolchain.
+- Node.js **22** and npm.
+- Docker with Docker Compose, or PostgreSQL 16 with pgcrypto support.
+
+### 1. Start PostgreSQL and configure the environment
+
+Run from the repository root:
 
 ```sh
 docker compose up -d
 cp -n backend/.env.example backend/.env
 cp -n frontend/.env.example frontend/.env.local
+```
+
+The copy commands preserve existing environment files. Review those files if they already exist. Docker Compose exposes the development database on port **5434**.
+
+### 2. Start the API
+
+```sh
 cd backend
 APP_MODE=demo POSTCODE_PROVIDER=mock cargo run
 ```
+
+Startup applies the SQLx migrations and idempotently seeds one dedicated demo merchant, three riders, and five example deliveries. Existing records are preserved.
+
+### 3. Start the frontend
 
 In a second terminal:
 
@@ -30,80 +143,125 @@ npm ci
 npm run dev
 ```
 
-Open http://localhost:3000. API health: http://localhost:8080/health. Swagger UI: http://localhost:8080/docs. Machine-readable specification: `/openapi.json`.
+| Local service | URL |
+| --- | --- |
+| Frontend | http://localhost:3000 |
+| API health | http://localhost:8080/health |
+| Swagger UI | http://localhost:8080/docs |
+| OpenAPI specification | http://localhost:8080/openapi.json |
 
-The existing `.env` is preserved. Set `APP_MODE=demo`, `POSTCODE_PROVIDER=mock`, and the correct `DATABASE_URL`. Migrations run automatically before the server starts. Demo seeding is idempotent and protected by an advisory transaction lock. It creates one dedicated merchant, three riders, and five example deliveries with lifecycle histories. Existing records and the initial migration are preserved.
+### Environment variables
 
-## Three-minute walkthrough
+| Variable | Location | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` | Backend only | PostgreSQL connection string; use a direct TLS connection for Neon |
+| `APP_MODE` | Backend | Set to `demo` for the isolated workflow; defaults to `production` |
+| `POSTCODE_PROVIDER` | Backend | Set to `mock` for the working demonstration |
+| `FRONTEND_ORIGIN` | Backend | Exact permitted browser origin, including scheme and without a trailing slash |
+| `PORT` | Backend | Runtime listening port; defaults to `8080` |
+| `RUST_LOG` | Backend | Logging level, typically `info` |
+| `NEXT_PUBLIC_API_BASE_URL` | Frontend | Public API origin, without `/api/v1`; defaults locally to `http://localhost:8080` |
 
-1. Open `/demo`. The dedicated **Lagos Market • Demo** merchant is selected.
-2. Resolve `EK01A03FK01` (also try `LA01A03IK01` or `AB01A03FC01`). Every address is explicitly fictional.
-3. Use the supplied sample recipient details, add a parcel description, and create the delivery.
-4. On the delivery page, choose a rider and click **Assign rider**.
-5. Click **Mark parcel picked up**, then **Start delivery**.
-6. Click **Generate demo OTP**. Copy the displayed six-digit code into the confirmation field.
-7. Click **Confirm delivery**. Review the completed timeline and proof confirmation; visit `/dashboard` for updated statistics.
-8. `/rider` provides the same progress and confirmation actions scoped to the selected demo rider’s assigned deliveries.
+`NEXT_PUBLIC_API_BASE_URL` is compiled into browser code. Rebuild the frontend after changing it. Database credentials and provider secrets must never use a `NEXT_PUBLIC_` prefix.
 
-Seeded delivered examples are clearly identified as having no actual OTP confirmation. Newly completed deliveries carry confirmed OTP proof. If an issued code is lost on refresh, wait five minutes for expiry and request another. A delivery locked after five incorrect attempts requires a new demo delivery; issuance cannot reset its attempt limit.
+## API reference
 
-## API
-
-See [OpenAPI](docs/openapi.json) for request contracts. Errors use `{"error":"message"}`. Business endpoints return 403 outside demo mode.
+See the [OpenAPI specification](docs/openapi.json) for request and response schemas, or use the [deployed Swagger UI](https://smartride-api-bfrg.onrender.com/docs).
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
 | GET | `/health` | Database readiness |
 | GET | `/api/v1/demo` | Demo merchant and fictional postcodes |
-| GET | `/api/v1/addresses/resolve?postcode=...` | Resolve fictional address |
-| GET, POST | `/api/v1/deliveries` | List / create demo merchant deliveries |
-| GET | `/api/v1/deliveries/{id}` | Delivery, address, rider, proof, timeline |
-| GET | `/api/v1/stats` | Merchant dashboard counts |
-| GET, POST | `/api/v1/riders` | List / register demo riders |
-| GET | `/api/v1/riders/{id}/deliveries` | Assigned deliveries |
-| POST | `/api/v1/deliveries/{id}/assign` | Assign rider |
-| POST | `/api/v1/deliveries/{id}/status` | Pickup, transit, or failure |
-| POST | `/api/v1/deliveries/{id}/otp` | Generate demo-only OTP |
-| POST | `/api/v1/deliveries/{id}/confirm` | Verify OTP and deliver atomically |
+| GET | `/api/v1/addresses/resolve?postcode=...` | Resolve a fictional postcode |
+| GET, POST | `/api/v1/deliveries` | List or create demo merchant deliveries |
+| GET | `/api/v1/deliveries/{id}` | Delivery details, address, rider, proof, and timeline |
+| GET | `/api/v1/stats` | Merchant dashboard statistics |
+| GET, POST | `/api/v1/riders` | List or register demo riders |
+| GET | `/api/v1/riders/{id}/deliveries` | Retrieve assigned deliveries |
+| POST | `/api/v1/deliveries/{id}/assign` | Assign a rider |
+| POST | `/api/v1/deliveries/{id}/status` | Record pickup, transit, or failure |
+| POST | `/api/v1/deliveries/{id}/otp` | Generate an OTP with demo-only display |
+| POST | `/api/v1/deliveries/{id}/confirm` | Verify the OTP and complete delivery atomically |
 
-## Security and integration boundaries
+Errors use `{"error":"message"}`. Business endpoints return `403` outside demo mode. Delivery lists show the latest 200 records; statistics include all records.
 
-- **Public shared demo, not production authentication.** Anyone can operate the dedicated demo merchant/riders. Never enter real personal or commercial data. Arbitrary merchant IDs are rejected; existing merchants’ deliveries cannot be read or changed through demo endpoints.
-- `APP_MODE` defaults to `production`, which disables every business endpoint. Production merchant/rider authentication and recipient OTP messaging are not implemented. Do not enable demo mode on a database with sensitive information. Prefer a dedicated deployment/database.
-- OTPs use OS-backed random generation, salted bcrypt cost 10 storage, five-minute expiry, five attempts, and consumed-state checks. Plaintext is returned only by the guarded demo-only issuance endpoint and is never logged or persisted. Row locks serialize issuance/verification; failed attempts persist; delivery and event changes commit atomically.
-- A single-instance aggregate rate limit allows 240 API calls per minute. OTP attempts also have persistent per-delivery limits. This intentionally simple public demo limiter is not a distributed production abuse-prevention system. Add an ingress rate limit and authentication before production use.
-- CORS permits only `FRONTEND_ORIGIN`; it is not an authorization mechanism. Default Axum JSON body limits apply; text fields have length bounds. UUID foreign keys enforce data integrity.
-- The existing `PostcodeProvider` abstraction remains. Live NIPOST is deliberately unavailable: no endpoint, authentication convention, response schema, or lookup level is invented. The demo postcode format is a local fixture convention, not a claim about official NDAPS validation. Verified official documentation and credentials are required to implement the adapter.
-- Delivery lists show the latest 200 rows; statistics count all rows. No payments, dispatch optimization, production messaging, or cancellation workflow is included.
+## Security and MVP boundaries
 
-## Deployment
+The deployment is a shared, fictional-data demonstration. Production merchant/rider authentication and customer OTP messaging are not implemented. Setting `APP_MODE=production` disables business endpoints; it does not enable a production login system.
 
-The free deployment target is **Render Free + Neon Free + Vercel Hobby**; Railway is optional and is not used. Follow [deployment instructions](docs/DEPLOYMENT.md). Backend Docker builds use the repository root as context and include the existing migrations. The server binds `0.0.0.0:$PORT`, runs migrations at startup, and exposes database-aware `/health`.
+The implemented safeguards include:
 
-```sh
-docker build -f backend/Dockerfile -t smartride-api .
-docker run --rm --env-file backend/.env -p 8080:8080 smartride-api
-```
+- **Data isolation:** Public operations are restricted to the dedicated demo merchant and its riders. Arbitrary merchant identities do not grant access to existing merchants’ records.
+- **OTP protection:** OS-backed random generation, salted bcrypt storage at cost 10, five-minute expiry, five verification attempts, and consumed-state checks. Plaintext codes are displayed only by the guarded demo issuance endpoint and are never logged or persisted.
+- **Transactional integrity:** Row locks serialize OTP verification; failed attempts persist, and successful confirmation commits the delivery state and event together.
+- **Request controls:** Exact-origin CORS, input length checks, JSON body limits, foreign-key constraints, and an aggregate limit of 240 API requests per minute per instance.
 
-For container access to a host database, adjust `DATABASE_URL` to a reachable host; `localhost` inside Docker refers to the container.
+The rate limiter is intended for a single-instance demo. Real deployments require authenticated merchant/rider access, distributed abuse prevention, customer messaging, and an official postcode integration. Payments, dispatch optimization, and cancellation workflows are outside this MVP’s scope.
 
-## Validation
+**OTP recovery:** If a displayed code is lost, wait for its five-minute expiry before requesting another. Five incorrect attempts lock that delivery’s OTP flow; create a new sample delivery to continue the demonstration.
+
+## Build and verification
+
+### Backend
 
 ```sh
 cd backend
 cargo fmt --check
 cargo check --locked
 cargo test --locked
-cd ../frontend
+```
+
+### Frontend
+
+```sh
+cd frontend
 npm run typecheck
 npm run lint
 npm run build
-cd ..
-API_BASE_URL=http://localhost:8080 TEST_DB_CONTAINER=smartride-postgres python3 scripts/smoke.py
 ```
 
-The smoke test creates **new sample records** in the selected demo database. With `TEST_DB_CONTAINER`, it verifies migrations/hash storage and expires one newly created OTP to test actual database expiry. Omit that variable for remote API testing. Use only a dedicated demo database. See [validation record](docs/VALIDATION.md) for what was actually executed.
+### API integration
 
-For browser integration tests, start the backend in demo mode on port 8081 and build the frontend with `NEXT_PUBLIC_API_BASE_URL=http://localhost:8081`, then run `npm start` from `frontend/` and `node scripts/browser-smoke.mjs` from the repository root. It requires Node 22+ and local Google Chrome (`CHROME_PATH` overrides `/usr/bin/google-chrome`). Screenshots are saved under `/tmp/smartride-*.png`.
+With the local API and development database running, execute from the repository root:
 
-To run the access/CORS/rate-limit checks, also start a production-mode API on port 8082 and execute `python3 scripts/security-smoke.py` **after** the other tests. It exhausts the demo instance's rate limit; allow a minute or restart the demo API before continuing.
+```sh
+API_BASE_URL=http://localhost:8080 \
+TEST_DB_CONTAINER=smartride-postgres \
+python3 scripts/smoke.py
+```
+
+The smoke test creates sample deliveries. `TEST_DB_CONTAINER` enables database-level migration, hash-storage, and OTP-expiry checks against newly created test records. Omit it when testing a remote API; use only a dedicated demo database.
+
+### Production container
+
+```sh
+docker build -f backend/Dockerfile -t smartride-api:free-hosting .
+python3 scripts/verify-container.py
+```
+
+The container test starts disposable PostgreSQL and API containers, verifies fresh migrations, seeding, non-root execution, and custom port binding, then runs API and security checks. It removes its own resources without touching the existing database. Ports **8081** and **8082** must be available.
+
+### Public browser workflow
+
+```sh
+FRONTEND_URL=https://smartride-kappa.vercel.app \
+node scripts/browser-smoke.mjs
+```
+
+The browser test requires Node.js 22+ and Google Chrome. Set `CHROME_PATH` to override `/usr/bin/google-chrome`. It verifies the actual UI workflow and saves desktop/mobile screenshots under `/tmp/smartride-*.png`.
+
+For local browser testing, run the API on port 8081 and build the frontend with `NEXT_PUBLIC_API_BASE_URL=http://localhost:8081` before starting it. The security script additionally expects a production-mode API on port 8082 and intentionally exhausts the demo rate limit; run it last.
+
+See [VALIDATION.md](docs/VALIDATION.md) for the checks that were actually executed, including successful public API and browser tests.
+
+## Deployment and operations
+
+The verified stack is **Render Free + Neon Free + Vercel Hobby**. The API binds to `0.0.0.0:$PORT`, applies migrations before serving, and exposes a database-aware health endpoint. Its Docker image runs as a non-root user and includes a built-in health probe.
+
+[DEPLOYMENT.md](docs/DEPLOYMENT.md) contains the live resource identifiers, exact redeployment commands, environment settings, dashboard instructions, and free-tier constraints. Backend builds require the repository root as context because the binary embeds `docs/openapi.json`.
+
+Keep `.env` files and provider credentials out of Git. The public demonstration must remain isolated from databases containing sensitive information.
+
+## License
+
+Distributed under the [MIT License](LICENSE).
