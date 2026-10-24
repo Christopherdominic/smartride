@@ -1,6 +1,6 @@
 # Validation record — updated 25 October 2026
 
-Executed against the existing local PostgreSQL 16 Docker service and the implemented application. No public deployment is claimed.
+Executed against the existing local PostgreSQL 16 Docker service and the implemented application. Local, container, and public deployment checks are distinguished below. The public deployment was verified on 25 October 2026.
 
 | Check | Result |
 | --- | --- |
@@ -26,7 +26,7 @@ The browser test creates real sample records in PostgreSQL. API smoke tests also
 
 - **Docker image build (resolved 25 October):** `smartride-api:free-hosting` built successfully using a digest-pinned Rust 1.98.0 builder and Debian Bookworm runtime. Runtime package installation was removed; the binary supplies its own health probe. The exact image passed fresh-database and browser integration tests as described below.
 - **Railway:** source upload/deployment received explicit user approval. The CLI sign-in succeeded, but `railway up` then reported: **“Your trial has expired. Please select a plan to continue using Railway.”** No successful deployment or managed database was created/verified by this work. Railway is no longer the deployment target; no paid plan is needed for the selected Render/Neon/Vercel configuration.
-- **Vercel:** configuration/instructions prepared; not deployed because no public API is available yet. No live end-to-end URLs have been tested.
+- **Vercel (resolved 25 October):** deployed on Hobby; the stable public URL and complete public browser workflow passed. See the live deployment record below.
 - **Live NIPOST:** intentionally unconfigured; verified official documentation and credentials are not available in this task. Fictional data remains clearly labeled.
 - **Production authentication:** not implemented. Production mode disables all business endpoints; the public demo permits only dedicated sample data.
 
@@ -41,4 +41,23 @@ See [deployment instructions](DEPLOYMENT.md) for the exact Railway and Vercel se
 - API, actual Chrome frontend/OTP workflow, concurrent OTP consumption, expiry/replay/attempt tests, CORS, rate limiting, and production read/write denial all passed against the container deployment.
 - Rust formatting/check/unit tests, frontend TypeScript/lint/production build, source secret scan, and `git diff --check` passed again. Vercel builds now reject a missing or invalid public HTTPS API origin.
 - Render CLI browser authorization succeeded. Render's API-backed Blueprint validator returned `valid: true` for `render.yaml`; its plan contains only the free `smartride-api` service.
-- Neon/Vercel account authorization and public deployment verification are still pending. **No public success is claimed by these local/container results.**
+- Neon and Vercel authorization subsequently completed; public checks are recorded separately below.
+
+## Verified public deployment — 25 October 2026
+
+| Check | Result |
+| --- | --- |
+| Hosting plans | Render service `plan=free`; Neon organization `plan=free`; Vercel scope `plan=hobby`; no paid upgrade selected |
+| Render deployment | `dep-dbejtd7b9u1s739vkvgg` reported **live** after the final CORS update; application commit `33e42884bf241fc70353eeb14b7687b5b18c682c` |
+| Neon | Dedicated `smartride-demo` PostgreSQL 16 project (`floral-band-71506813`), direct TLS with `sslmode=verify-full`, minimum/maximum 0.25 CU |
+| Public API readiness | `https://smartride-api-bfrg.onrender.com/health` returned HTTP 200 and `status: ok` |
+| Public API smoke | `API_BASE_URL=https://smartride-api-bfrg.onrender.com python3 scripts/smoke.py` passed persisted delivery lifecycle, timeline, OTP attempts/replay/concurrency, scope restrictions, rider registration, failure state, health, and docs |
+| Vercel deployment | `dpl_Crnu6t7GaXyYzza3jtkqVB179nWK` reported **READY**, production alias `https://smartride-kappa.vercel.app` |
+| Anonymous public frontend | HTTP 200 with SmartRide landing content; production alias requires no Vercel login |
+| Deployed CORS | Exact origin `https://smartride-kappa.vercel.app`; untrusted browser origin not permitted |
+| Public browser workflow | `FRONTEND_URL=https://smartride-kappa.vercel.app node scripts/browser-smoke.mjs` **passed** postcode → resolve → create → assign → pickup → transit → OTP → delivered, proof confirmation, exact event timeline, dashboard/rider data, and mobile overflow checks |
+| Upload secrecy | Vercel dry-run manifest contained 20 frontend source files; all `.env*`, auth state, dependencies, and build caches excluded. Git environment/auth files remain ignored. Render database secret was never printed or committed. |
+
+The public browser test used a fresh Chrome profile and no authentication bypass. The browser harness was updated to wait for loaded riders and enabled controls so it handles remote latency correctly; these were test synchronization fixes, not application workarounds.
+
+Actual OTP expiry and production-mode denial were verified using the exact production image with disposable local PostgreSQL. The public service intentionally runs isolated demo mode; no production authentication or official NIPOST integration is claimed. Free-tier idle suspension and quotas remain applicable.

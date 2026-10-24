@@ -2,6 +2,12 @@
 
 **One postcode. Every delivery.** A Rust + Next.js hackathon prototype for postcode-powered delivery coordination in Nigeria.
 
+**Live demo:** https://smartride-kappa.vercel.app/demo
+
+**API / Swagger:** https://smartride-api-bfrg.onrender.com/docs
+
+Deployed on Vercel Hobby, Render Free, and Neon Free; the complete public browser workflow was verified on 25 October 2026. Render sleeps after idle periods, so allow about a minute for the first API request to wake it.
+
 SmartRide connects fictional digital postcode resolution, merchant delivery creation, rider dispatch, tracking, and OTP proof of delivery. All demo actions call the Rust API and persist in PostgreSQL.
 
 ## Run locally

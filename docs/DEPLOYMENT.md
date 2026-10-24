@@ -2,6 +2,41 @@
 
 SmartRide uses **Render Free** for the Rust API, **Neon Free** for PostgreSQL, and **Vercel Hobby** for the Next.js frontend. Railway is not required. No paid resources should be selected.
 
+## Verified live deployment — 25 October 2026
+
+| Component | Live resource |
+| --- | --- |
+| Frontend / guided demo | https://smartride-kappa.vercel.app/demo |
+| API health | https://smartride-api-bfrg.onrender.com/health |
+| Swagger UI | https://smartride-api-bfrg.onrender.com/docs |
+| Render service | `srv-dbejnr8ae00c73dcgjsg`, `smartride-api`, Frankfurt, **Free** |
+| Neon project | `floral-band-71506813`, `smartride-demo`, AWS Frankfurt, PostgreSQL 16, **Free** organization, 0.25 CU |
+| Vercel project | `smartride`, `christopherdominics-projects`, **Hobby**, Node 22 |
+| Verified application source | GitHub commit `33e42884bf241fc70353eeb14b7687b5b18c682c` on `main` |
+
+The backend reports Live, the frontend reports Ready, and the public health and anonymous Chrome end-to-end workflow passed. No paid plan was selected. Database credentials exist only in the backend provider environment and private CLI state, not in Git or the frontend.
+
+### Redeploy these existing resources
+
+Backend (after installing/signing in to the [Render CLI](https://render.com/docs/cli)):
+
+```sh
+render workspace set tea-ct55sml6l47c73fd15v0 --confirm
+render deploys create srv-dbejnr8ae00c73dcgjsg --wait --confirm
+```
+
+Render also watches backend/image changes on GitHub `main`; documentation-only commits are excluded by its build filter. Runtime environment settings are configured in Render's dashboard, including `FRONTEND_ORIGIN=https://smartride-kappa.vercel.app`. Preserve the existing Neon direct TLS secret when changing other variables.
+
+Frontend (the initial verified deployment uploaded **only the frontend directory**, not the repository root):
+
+```sh
+npx vercel login
+npx vercel link --cwd frontend --project smartride --scope christopherdominics-projects --yes
+npx vercel deploy --cwd frontend --project smartride --scope christopherdominics-projects --prod --yes --archive=tgz
+```
+
+Its existing Production/Preview `NEXT_PUBLIC_API_BASE_URL` is `https://smartride-api-bfrg.onrender.com`. The current Vercel project has no Git integration and its project Root Directory is unset because the CLI uploads `frontend/` as the source root. **Do not upload the full repository with these settings.** To switch this existing project to Git-based builds, connect the repository and set Root Directory to `frontend` first. The dashboard instructions below describe that alternative.
+
 ## Why this stack
 
 Checked against official documentation on 24 October 2026:
