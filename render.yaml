@@ -1,0 +1,23 @@
+# Deploy as a Blueprint from the repository root. No Render database is created.
+services:
+  - type: web
+    name: smartride-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: APP_MODE
+        value: demo
+      - key: POSTCODE_PROVIDER
+        value: mock
+      - key: PORT
+        value: "10000"
+      - key: RUST_LOG
+        value: info
+      - key: DATABASE_URL
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false

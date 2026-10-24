@@ -1,0 +1,18 @@
+.git
+**/target
+**/node_modules
+**/.next
+**/.env
+**/.env.*
+!**/.env.example
+
+# Only backend sources and the embedded specification enter the image context.
+frontend/
+.agents/
+.codex/
+.aws/
+**/.aws/
+**/.codex/
+**/.agents/
+**/*.pem
+**/*.key

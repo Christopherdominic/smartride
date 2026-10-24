@@ -14,3 +14,15 @@ node_modules/
 # OS and editor
 .DS_Store
 .vscode/
+# Generated frontend types/cache
+*.tsbuildinfo
+frontend/next-env.d.ts
+
+# Hosting CLI state
+.vercel/
+.neon/
+.render/
+
+# Python verification cache
+__pycache__/
+*.pyc

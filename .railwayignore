@@ -1,0 +1,10 @@
+.git/
+backend/target/
+frontend/node_modules/
+frontend/.next/
+frontend/
+**/.env
+**/.env.*
+**/.aws/
+**/.codex/
+**/.agents/

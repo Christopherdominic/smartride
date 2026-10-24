@@ -1,5 +1,6 @@
 mod postcode;
 mod providers;
+mod workflow;
 
 use std::{env, sync::Arc};
 
@@ -24,6 +25,8 @@ use uuid::Uuid;
 struct AppState {
     db: PgPool,
     postcode: Arc<dyn PostcodeProvider>,
+    demo: bool,
+    limiter: Arc<std::sync::Mutex<(std::time::Instant, u32)>>,
 }
 
 #[derive(Debug)]
@@ -38,6 +41,21 @@ impl ApiError {
             status,
             message: message.into(),
         }
+    }
+
+    fn database(error: sqlx::Error) -> Self {
+        if let sqlx::Error::Database(ref db) = error {
+            match db.code().as_deref() {
+                Some("23505") => {
+                    return Self::new(StatusCode::CONFLICT, "reference already exists");
+                }
+                Some("23503") => {
+                    return Self::new(StatusCode::BAD_REQUEST, "referenced record does not exist");
+                }
+                _ => {}
+            }
+        }
+        Self::internal(error)
     }
 
     fn internal(error: impl std::fmt::Display) -> Self {
@@ -73,7 +91,7 @@ async fn health(State(state): State<AppState>) -> Result<Json<Value>, ApiError> 
     sqlx::query("SELECT 1")
         .execute(&state.db)
         .await
-        .map_err(ApiError::internal)?;
+        .map_err(ApiError::database)?;
 
     Ok(Json(json!({
         "status": "ok",
@@ -120,9 +138,32 @@ async fn create_delivery(
         ));
     }
 
+    if input.merchant_id != workflow::MERCHANT {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "dedicated demo merchant required",
+        ));
+    }
+    if input.recipient_name.len() > 120
+        || input.recipient_phone.len() > 30
+        || input
+            .parcel_description
+            .as_ref()
+            .is_some_and(|s| s.len() > 1000)
+        || input
+            .delivery_instructions
+            .as_ref()
+            .is_some_and(|s| s.len() > 1000)
+        || input
+            .external_reference
+            .as_ref()
+            .is_some_and(|s| s.len() > 120)
+    {
+        return Err(ApiError::new(StatusCode::BAD_REQUEST, "field too long"));
+    }
     let address = state.postcode.resolve(&input.destination_postcode).await?;
 
-    let mut tx = state.db.begin().await.map_err(ApiError::internal)?;
+    let mut tx = state.db.begin().await.map_err(ApiError::database)?;
 
     let address_id: Uuid = sqlx::query_scalar(
         r#"
@@ -142,7 +183,7 @@ async fn create_delivery(
     .bind(&address.provider_data)
     .fetch_one(&mut *tx)
     .await
-    .map_err(ApiError::internal)?;
+    .map_err(ApiError::database)?;
 
     let delivery: DeliveryResponse = sqlx::query_as(
         r#"
@@ -173,7 +214,7 @@ async fn create_delivery(
     .bind(input.parcel_description)
     .fetch_one(&mut *tx)
     .await
-    .map_err(ApiError::internal)?;
+    .map_err(ApiError::database)?;
 
     sqlx::query(
         r#"
@@ -192,9 +233,9 @@ async fn create_delivery(
     }))
     .execute(&mut *tx)
     .await
-    .map_err(ApiError::internal)?;
+    .map_err(ApiError::database)?;
 
-    tx.commit().await.map_err(ApiError::internal)?;
+    tx.commit().await.map_err(ApiError::database)?;
 
     Ok((StatusCode::CREATED, Json(delivery)))
 }
@@ -202,32 +243,24 @@ async fn create_delivery(
 async fn get_delivery(
     State(state): State<AppState>,
     Path(delivery_id): Path<Uuid>,
-) -> Result<Json<DeliveryResponse>, ApiError> {
-    let delivery = sqlx::query_as::<_, DeliveryResponse>(
-        r#"
-        SELECT
-            id,
-            merchant_id,
-            address_id,
-            status,
-            created_at
-        FROM deliveries
-        WHERE id = $1
-        "#,
-    )
-    .bind(delivery_id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(ApiError::internal)?;
-
-    match delivery {
-        Some(delivery) => Ok(Json(delivery)),
-        None => Err(ApiError::new(StatusCode::NOT_FOUND, "delivery not found")),
-    }
+) -> Result<Json<Value>, ApiError> {
+    workflow::detail(State(state), Path(delivery_id)).await
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Container health probe: reuse the existing HTTP client without runtime curl packages.
+    if env::args().any(|arg| arg == "--healthcheck") {
+        let port: u16 = env::var("PORT").unwrap_or_else(|_| "8080".into()).parse()?;
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()?
+            .get(format!("http://127.0.0.1:{port}/health"))
+            .send()
+            .await?
+            .error_for_status()?;
+        return Ok(());
+    }
     dotenvy::dotenv().ok();
 
     tracing_subscriber::fmt()
@@ -258,19 +291,63 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let state = AppState { db, postcode };
+    let demo = env::var("APP_MODE").unwrap_or_else(|_| "production".into()) == "demo";
+    if demo && provider_name != "mock" {
+        return Err("demo mode requires mock postcodes".into());
+    }
+    if demo {
+        workflow::seed(&db).await?;
+    }
+    let state = AppState {
+        db,
+        postcode,
+        demo,
+        limiter: Arc::new(std::sync::Mutex::new((std::time::Instant::now(), 0))),
+    };
+    let origin = env::var("FRONTEND_ORIGIN").unwrap_or_else(|_| "http://localhost:3000".into());
+    let cors = tower_http::cors::CorsLayer::new()
+        .allow_origin(origin.parse::<axum::http::HeaderValue>()?)
+        .allow_methods([axum::http::Method::GET, axum::http::Method::POST])
+        .allow_headers([axum::http::header::CONTENT_TYPE]);
 
-    let app = Router::new()
-        .route("/health", get(health))
+    let api = Router::new()
+        .route("/api/v1/demo", get(workflow::config))
+        .route(
+            "/api/v1/riders",
+            get(workflow::riders).post(workflow::register),
+        )
+        .route(
+            "/api/v1/riders/{id}/deliveries",
+            get(workflow::rider_deliveries),
+        )
+        .route("/api/v1/stats", get(workflow::stats))
+        .route("/api/v1/deliveries/{id}/assign", post(workflow::assign))
+        .route("/api/v1/deliveries/{id}/status", post(workflow::progress))
+        .route("/api/v1/deliveries/{id}/otp", post(workflow::issue))
+        .route("/api/v1/deliveries/{id}/confirm", post(workflow::confirm))
         .route("/api/v1/addresses/resolve", get(resolve_address))
-        .route("/api/v1/deliveries", post(create_delivery))
+        .route(
+            "/api/v1/deliveries",
+            get(workflow::list).post(create_delivery),
+        )
         .route("/api/v1/deliveries/{id}", get(get_delivery))
-        .layer(TraceLayer::new_for_http())
-        .with_state(state);
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            workflow::guard,
+        ))
+        .with_state(state.clone());
+    let app = Router::new()
+        .merge(api)
+        .route("/health", get(health))
+        .route("/openapi.json", get(workflow::openapi))
+        .route("/docs", get(workflow::docs))
+        .with_state(state)
+        .layer(cors)
+        .layer(TraceLayer::new_for_http());
 
     let port: u16 = env::var("PORT").unwrap_or_else(|_| "8080".into()).parse()?;
 
-    let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await?;
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}")).await?;
 
     tracing::info!(port, "SmartRide API listening");
 
