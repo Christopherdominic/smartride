@@ -18,6 +18,7 @@ import {
   type Rider,
   type Address,
   type Stats,
+  type Autocomplete,
 } from "@/lib/api";
 const label = (s: string) => s.replaceAll("_", " ");
 export function Badge({ status }: { status: string }) {
@@ -189,6 +190,55 @@ export function CreateForm({ guided = false }: { guided?: boolean }) {
   const { data: config, error: loadError } = useLoad(loadConfig);
   const [postcode, setPostcode] = useState("EK01A03FK01");
   const [address, setAddress] = useState<Address>();
+  const [suggestions, setSuggestions] = useState<Autocomplete>();
+  const [searchError, setSearchError] = useState("");
+  const [searchBusy, setSearchBusy] = useState(false);
+  const [customerAddress, setCustomerAddress] = useState("");
+  const live = config?.provider === "nipost";
+  useEffect(() => {
+    if (config?.provider === "nipost") setPostcode("");
+  }, [config]);
+  async function search() {
+    setSearchBusy(true);
+    setSearchError("");
+    setSuggestions(undefined);
+    try {
+      setSuggestions(
+        await api<Autocomplete>(
+          `/addresses/autocomplete?q=${encodeURIComponent(postcode)}`,
+        ),
+      );
+    } catch (e) {
+      setSearchError((e as Error).message);
+    } finally {
+      setSearchBusy(false);
+    }
+  }
+  function selectSuggestion(code: string) {
+    const compact = postcode.toUpperCase().replace(/[\s-]/g, "");
+    const index = { state: 0, lga: 1, district: 2, area: 3, unit: 4 }[
+      suggestions?.segment || ""
+    ];
+    const widths = [2, 2, 3, 2, 2];
+    let next = code;
+    if (
+      index !== undefined &&
+      !code.includes("-") &&
+      code.length <= widths[index]
+    ) {
+      let offset = 0;
+      const prefix = widths.slice(0, index).map((width) => {
+        const part = compact.slice(offset, offset + width);
+        offset += width;
+        return part;
+      });
+      if (prefix.every((part, i) => part.length === widths[i]))
+        next = [...prefix, code].join("-") + (index < 4 ? "-" : "");
+    }
+    setPostcode(next);
+    setAddress(undefined);
+    setSuggestions(undefined);
+  }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
@@ -210,7 +260,8 @@ export function CreateForm({ guided = false }: { guided?: boolean }) {
   }
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!config || !address) return;
+    if (!config || !address || (live && !address.provider_data.verified))
+      return;
     const f = new FormData(e.currentTarget);
     setBusy(true);
     setError("");
@@ -220,6 +271,8 @@ export function CreateForm({ guided = false }: { guided?: boolean }) {
         recipient_name: f.get("name"),
         recipient_phone: f.get("phone"),
         destination_postcode: address.postcode,
+        customer_address: customerAddress.trim() || undefined,
+        landmark: f.get("landmark"),
         parcel_description: f.get("parcel"),
         delivery_instructions: f.get("instructions"),
       });
@@ -242,7 +295,7 @@ export function CreateForm({ guided = false }: { guided?: boolean }) {
       </h1>
       <p>
         {guided
-          ? "Resolve an address, create a delivery, then follow the guided actions through to OTP confirmation."
+          ? "Verify a postcode, supply the delivery address, then follow assignment through to OTP confirmation."
           : "Start with a postcode. We’ll connect the rest."}
       </p>
       <ErrorBox message={error || loadError} />
@@ -256,17 +309,20 @@ export function CreateForm({ guided = false }: { guided?: boolean }) {
           </label>
           <div className="form-divider">
             <span>01</span>
-            <h2>Find the destination</h2>
+            <h2>Verify the destination postcode</h2>
           </div>
           <label>
             Digital postcode
             <div className="input-action">
               <input
                 value={postcode}
+                disabled={busy || searchBusy}
                 maxLength={30}
+                placeholder={live ? "AA-99-H77-BB-55" : "EK-01-A03-FK-01"}
                 onChange={(e) => {
                   setPostcode(e.target.value);
                   setAddress(undefined);
+                  setSuggestions(undefined);
                 }}
                 required
               />
@@ -275,38 +331,112 @@ export function CreateForm({ guided = false }: { guided?: boolean }) {
                 onClick={() => void resolve()}
                 disabled={busy}
               >
-                Resolve postcode
+                {live ? "Verify postcode" : "Resolve postcode"}
               </button>
             </div>
           </label>
-          <p className="hint">
-            Try{" "}
-            {config.postcodes.map((p) => (
+          {!live && (
+            <p className="hint">
+              Try{" "}
+              {config.postcodes.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  className="postcode-option"
+                  onClick={() => {
+                    setPostcode(p);
+                    setAddress(undefined);
+                  }}
+                >
+                  {p}
+                </button>
+              ))}
+            </p>
+          )}
+          {live && (
+            <>
+              <p className="hint">
+                Use a postcode from your key’s{" "}
+                {config.environment === "sandbox"
+                  ? "sandbox dataset"
+                  : "configured dataset"}
+                . Lookup L1 checks validity only.
+              </p>
               <button
-                key={p}
                 type="button"
-                className="postcode-option"
-                onClick={() => {
-                  setPostcode(p);
-                  setAddress(undefined);
-                }}
+                className="button secondary"
+                disabled={busy || searchBusy || postcode.trim().length < 2}
+                onClick={() => void search()}
               >
-                {p}
+                {searchBusy ? "Searching…" : "Find postcode suggestions"}
               </button>
-            ))}
-          </p>
+              <ErrorBox message={searchError} />
+              {suggestions && (
+                <div aria-live="polite">
+                  <p className="hint">
+                    {suggestions.suggestions.length
+                      ? `Suggestions for ${suggestions.segment}; select one, then verify the complete postcode.`
+                      : "No suggestions returned. You can still enter a complete postcode and verify it."}
+                  </p>
+                  {suggestions.suggestions.map((s) => (
+                    <button
+                      type="button"
+                      className="postcode-option"
+                      key={s.code}
+                      onClick={() => selectSuggestion(s.code)}
+                    >
+                      {s.label} ({s.code})
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
           {address && (
             <div className="address-preview">
               <MapPin />
               <div>
-                <strong>{address.formatted_address}</strong>
+                <strong>
+                  {address.provider === "nipost" &&
+                  address.provider_data.verified
+                    ? "Postcode verified by NIPOST"
+                    : address.formatted_address}
+                </strong>
                 <small>
-                  {address.postcode} · Fictional demonstration address
+                  {address.postcode} ·{" "}
+                  {address.provider === "nipost"
+                    ? `${address.provider_data.environment === "sandbox" ? "Sandbox · " : ""}L1 validity only; street address is not verified`
+                    : "Fictional demonstration address"}
                 </small>
               </div>
               <CheckCircle2 />
             </div>
           )}
+          <label>
+            Full delivery address{" "}
+            {live ? "(required)" : "(optional for offline demo)"}
+            <textarea
+              name="customer_address"
+              value={customerAddress}
+              onChange={(e) => setCustomerAddress(e.target.value)}
+              required={live}
+              minLength={5}
+              maxLength={1000}
+              placeholder="Customer-provided house number, street, locality and city"
+            />
+            <span className="hint">
+              Customer-provided address; NIPOST L1 does not verify street
+              addresses or coordinates.
+            </span>
+          </label>
+          <label>
+            Landmark or delivery directions
+            <input
+              name="landmark"
+              maxLength={500}
+              placeholder="e.g. Opposite the community centre"
+            />
+          </label>
           <div className="form-divider">
             <span>02</span>
             <h2>Add parcel details</h2>
@@ -352,7 +482,12 @@ export function CreateForm({ guided = false }: { guided?: boolean }) {
           </label>
           <div className="form-bottom">
             <span>Sample details only. This workspace is public.</span>
-            <button className="button" disabled={busy || !address}>
+            <button
+              className="button"
+              disabled={
+                busy || !address || (live && customerAddress.trim().length < 5)
+              }
+            >
               {busy ? "Working…" : "Create delivery"}
               <ArrowRight size={18} />
             </button>
@@ -395,10 +530,24 @@ export function Detail({ id }: { id: string }) {
                     <div>
                       <strong>{d.postcode}</strong>
                       <p>{d.formatted_address}</p>
-                      <small>Fictional demonstration address</small>
+                      <small>
+                        {d.address_source === "customer"
+                          ? "Customer-provided address · not verified by NIPOST"
+                          : "Historical offline demo address"}
+                      </small>
+                      {d.postcode_verified && (
+                        <small>
+                          Postcode verified by NIPOST · L1 validity only
+                          {d.postcode_environment === "sandbox"
+                            ? " · Sandbox"
+                            : ""}
+                        </small>
+                      )}
                     </div>
                   </div>
                   <dl>
+                    <dt>Landmark</dt>
+                    <dd>{d.landmark || "No landmark supplied"}</dd>
                     <dt>Recipient</dt>
                     <dd>{d.recipient_name}</dd>
                     <dt>Phone</dt>

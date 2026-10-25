@@ -12,7 +12,11 @@ services:
       - key: APP_MODE
         value: demo
       - key: POSTCODE_PROVIDER
-        value: mock
+        value: nipost
+      - key: NIPOST_API_BASE_URL
+        value: https://api.postcode.gov.ng
+      - key: NIPOST_API_KEY
+        sync: false
       - key: PORT
         value: "10000"
       - key: RUST_LOG

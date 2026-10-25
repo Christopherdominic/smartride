@@ -59,7 +59,7 @@ export default function Home() {
               <small>THE ADDRESS THAT CONNECTS IT ALL</small>
               <strong>EK01 A03 FK01</strong>
               <span>
-                <span className="dot" /> Fictional demo postcode
+                <span className="dot" /> Illustrative postcode
               </span>
             </div>
           </div>
@@ -90,7 +90,7 @@ export default function Home() {
             [
               MapPin,
               "Start with a postcode",
-              "Resolve a digital postcode into a consistent address before your parcel leaves the store.",
+              "Verify postcode validity and collect customer-provided delivery details before dispatch.",
             ],
             [
               Route,
@@ -125,13 +125,14 @@ export default function Home() {
           <p>
             SmartRide demonstrates how Nigeria’s NIPOST NDAPS concept could
             connect address identification to delivery operations. This
-            prototype uses fictional data; official integration remains
-            unconfigured pending verified documentation and credentials.
+            integration verifies postcode validity at L1. Customers supply their
+            street address and directions separately; these details are not
+            verified by NIPOST. Offline fixtures remain available in mock mode.
           </p>
         </div>
         <ol className="steps">
           {[
-            "Resolve a digital postcode",
+            "Verify a digital postcode",
             "Create and assign a delivery",
             "Track progress through each handoff",
             "Confirm arrival with an OTP",

@@ -109,12 +109,13 @@ pub async fn seed(db: &PgPool) -> Result<(), sqlx::Error> {
     }
     tx.commit().await
 }
-pub async fn config() -> Json<Value> {
+pub async fn config(State(s): State<AppState>) -> Json<Value> {
+    let provider = s.postcode.name();
     Json(
-        json!({"mode":"demo","provider":"mock","merchant":{"id":MERCHANT,"name":"Lagos Market • Demo"},"postcodes":["EK01A03FK01","LA01A03IK01","AB01A03FC01"]}),
+        json!({"mode":"demo","provider":provider,"environment":s.postcode.environment(),"lookup_level":if provider=="nipost"{Some(1)}else{None},"customer_address_required":provider=="nipost","merchant":{"id":MERCHANT,"name":"Lagos Market • Demo"},"postcodes":if provider=="mock"{vec!["EK-01-A03-FK-01","LA-01-A03-IK-01","AB-01-A03-FC-01"]}else{vec![]}}),
     )
 }
-const SELECT: &str = "SELECT to_jsonb(d) || jsonb_build_object('postcode',a.postcode,'formatted_address',a.formatted_address,'rider_name',r.name,'proof_confirmed',EXISTS(SELECT 1 FROM delivery_otps o WHERE o.delivery_id=d.id AND o.consumed_at IS NOT NULL)) FROM deliveries d JOIN addresses a ON a.id=d.address_id LEFT JOIN riders r ON r.id=d.rider_id";
+const SELECT: &str = "SELECT to_jsonb(d) || jsonb_build_object('postcode',a.postcode,'formatted_address',COALESCE(a.customer_address,a.formatted_address),'customer_address',a.customer_address,'landmark',a.landmark,'address_source',CASE WHEN a.customer_address IS NOT NULL THEN 'customer' ELSE 'offline_demo' END,'postcode_provider',a.provider,'postcode_verified',a.provider='nipost' AND COALESCE((a.provider_data->>'verified')::boolean,false),'postcode_environment',a.provider_data->>'environment','postcode_verified_at',a.postcode_verified_at,'rider_name',r.name,'proof_confirmed',EXISTS(SELECT 1 FROM delivery_otps o WHERE o.delivery_id=d.id AND o.consumed_at IS NOT NULL)) FROM deliveries d JOIN addresses a ON a.id=d.address_id LEFT JOIN riders r ON r.id=d.rider_id";
 pub async fn list(State(s): State<AppState>) -> Result<Json<Value>, ApiError> {
     let rows: Vec<Value> = sqlx::query_scalar(&format!(
         "{SELECT} WHERE d.merchant_id=$1 ORDER BY d.created_at DESC LIMIT 200"

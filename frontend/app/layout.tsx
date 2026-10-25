@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Package, ArrowUpRight } from "lucide-react";
 import "./globals.css";
+import { ProviderBanner } from "@/components/provider-banner";
 export const metadata: Metadata = {
   title: "SmartRide — One postcode. Every delivery.",
   description:
-    "Postcode-powered delivery coordination for Nigeria. A working logistics demo with fictional postcode data.",
+    "Postcode-powered delivery coordination for Nigeria. NIPOST L1 postcode verification with customer-provided delivery addresses.",
 };
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -26,11 +27,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </Link>
           </nav>
         </header>
-        <div className="demo-banner">
-          <span className="dot" />
-          Demo Postcode Data · Fictional addresses · Shared demo workspace ·
-          Please use sample recipient details
-        </div>
+        <ProviderBanner />
         {children}
         <footer>
           <Link href="/" className="brand">

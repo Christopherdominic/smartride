@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "SmartRide API",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "description": "Public demo is restricted to dedicated fictional data. APP_MODE=production disables all business endpoints until production authentication exists. Shared aggregate rate limit: 240 requests/minute per instance. Errors: {\"error\":\"message\"}."
   },
   "paths": {
@@ -215,7 +215,7 @@
             }
           },
           "429": {
-            "description": "Demo rate limit",
+            "description": "Postcode request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -226,6 +226,36 @@
           },
           "500": {
             "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "NIPOST unavailable or malformed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "NIPOST credentials/credits unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "NIPOST timeout",
             "content": {
               "application/json": {
                 "schema": {
@@ -245,7 +275,8 @@
               "example": "EK01A03FK01"
             }
           }
-        ]
+        ],
+        "description": "NIPOST mode performs an authenticated lookup at level=1 only and never falls back to offline fixtures. Full delivery street address must be supplied by the customer. Invalid/nonexistent codes return 404; malformed formats return 400."
       }
     },
     "/api/v1/deliveries": {
@@ -371,7 +402,7 @@
             }
           },
           "429": {
-            "description": "Demo rate limit",
+            "description": "Postcode request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -399,6 +430,36 @@
                 }
               }
             }
+          },
+          "502": {
+            "description": "NIPOST unavailable or malformed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "NIPOST credentials/credits unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "NIPOST timeout",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -410,7 +471,8 @@
               }
             }
           }
-        }
+        },
+        "description": "NIPOST mode performs an authenticated lookup at level=1 only and never falls back to offline fixtures. Full delivery street address must be supplied by the customer. Invalid/nonexistent codes return 404; malformed formats return 400."
       }
     },
     "/api/v1/deliveries/{id}": {
@@ -1215,6 +1277,95 @@
           }
         ]
       }
+    },
+    "/api/v1/addresses/autocomplete": {
+      "get": {
+        "summary": "Server-side NIPOST autocomplete proxy; shares a 60 requests/minute per-instance postcode budget",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 30
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "At most ten suggestions for the active segment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Autocomplete"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query: 2\u201330 ASCII letters/digits/spaces/hyphens",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Search scope denied or demo operations disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Local postcode budget or upstream rate limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Upstream unavailable or malformed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "API key rejected or credits unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Upstream timeout",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1249,6 +1400,17 @@
             "type": "string",
             "maxLength": 120,
             "nullable": true
+          },
+          "customer_address": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 1000,
+            "description": "Customer-provided full street address. Required in NIPOST mode; never NIPOST-verified."
+          },
+          "landmark": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Customer-provided landmark or delivery directions."
           }
         },
         "required": [
@@ -1331,6 +1493,10 @@
         "properties": {
           "error": {
             "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "description": "Machine-readable error category. NIPOST 401/402 map to 503; scope denial 403; rate limit 429; timeout 504; unavailable/malformed 502."
           }
         }
       },
@@ -1421,6 +1587,40 @@
             "items": {
               "$ref": "#/components/schemas/Event"
             }
+          },
+          "customer_address": {
+            "type": "string",
+            "nullable": true
+          },
+          "landmark": {
+            "type": "string",
+            "nullable": true
+          },
+          "address_source": {
+            "type": "string",
+            "enum": [
+              "customer",
+              "offline_demo"
+            ]
+          },
+          "postcode_provider": {
+            "type": "string",
+            "enum": [
+              "mock",
+              "nipost"
+            ]
+          },
+          "postcode_verified": {
+            "type": "boolean"
+          },
+          "postcode_verified_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "postcode_environment": {
+            "type": "string",
+            "nullable": true
           }
         }
       },
@@ -1480,21 +1680,38 @@
             "type": "string"
           },
           "formatted_address": {
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "provider": {
             "type": "string",
             "enum": [
-              "mock"
+              "mock",
+              "nipost"
             ]
           },
           "provider_data": {
             "type": "object",
             "properties": {
-              "mock": {
-                "type": "boolean"
-              },
               "verified": {
+                "type": "boolean",
+                "description": "True only for successful NIPOST L1 validity verification; does not verify street address"
+              },
+              "lookup_level": {
+                "type": "integer",
+                "enum": [
+                  1
+                ]
+              },
+              "environment": {
+                "type": "string",
+                "enum": [
+                  "sandbox",
+                  "production",
+                  "unknown"
+                ]
+              },
+              "mock": {
                 "type": "boolean"
               }
             }
@@ -1533,7 +1750,8 @@
           "provider": {
             "type": "string",
             "enum": [
-              "mock"
+              "mock",
+              "nipost"
             ]
           },
           "merchant": {
@@ -1553,6 +1771,25 @@
             "items": {
               "type": "string"
             }
+          },
+          "environment": {
+            "type": "string",
+            "enum": [
+              "offline",
+              "sandbox",
+              "production",
+              "unknown"
+            ]
+          },
+          "customer_address_required": {
+            "type": "boolean"
+          },
+          "lookup_level": {
+            "type": "integer",
+            "nullable": true,
+            "enum": [
+              1
+            ]
           }
         }
       },
@@ -1571,6 +1808,36 @@
           },
           "warning": {
             "type": "string"
+          }
+        }
+      },
+      "Autocomplete": {
+        "type": "object",
+        "properties": {
+          "segment": {
+            "type": "string",
+            "enum": [
+              "state",
+              "lga",
+              "district",
+              "area",
+              "unit"
+            ]
+          },
+          "suggestions": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                }
+              }
+            }
           }
         }
       }

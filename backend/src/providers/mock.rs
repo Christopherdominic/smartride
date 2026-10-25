@@ -10,7 +10,7 @@ impl PostcodeProvider for MockPostcodeProvider {
     async fn resolve(&self, postcode: &str) -> Result<ResolvedAddress, PostcodeError> {
         let code = normalize_postcode(postcode)?;
 
-        let address = match code.as_str() {
+        let address = match code.replace('-', "").as_str() {
             "EK01A03FK01" => "Demo Building, Test District, Nigeria",
             "LA01A03IK01" => "Fictional Market House, Demo Lagos District, Nigeria",
             "AB01A03FC01" => "Fictional Unity House, Demo Abuja District, Nigeria",

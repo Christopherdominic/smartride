@@ -101,7 +101,9 @@ Set these environment variables:
 
 ```text
 APP_MODE=demo
-POSTCODE_PROVIDER=mock
+POSTCODE_PROVIDER=nipost
+NIPOST_API_BASE_URL=https://api.postcode.gov.ng
+NIPOST_API_KEY=<server-side secret configured privately>
 PORT=10000
 RUST_LOG=info
 DATABASE_URL=<Neon direct TLS connection string; secret>
@@ -116,7 +118,7 @@ Copy the actual `https://...onrender.com` URL from Render. Do not assume the ser
 export API_BASE_URL='https://ACTUAL-API.onrender.com'
 curl --fail --show-error --max-time 120 "$API_BASE_URL/health"
 curl --fail --show-error --max-time 120 "$API_BASE_URL/api/v1/demo"
-python3 scripts/smoke.py
+TEST_POSTCODE='<known valid postcode for the configured key>' python3 scripts/smoke.py
 ```
 
 The remote smoke test creates fictional records. Leave `TEST_DB_CONTAINER` unset: it is only for local database expiry inspection. Once the service is Live, check `/docs` and the complete API smoke result; a build/upload acknowledgment alone is insufficient.
@@ -151,8 +153,8 @@ Set the **actual** URLs, not placeholders:
 export API_BASE_URL='https://ACTUAL-API.onrender.com'
 export FRONTEND_URL='https://ACTUAL-FRONTEND.vercel.app'
 curl --fail --show-error --max-time 120 "$API_BASE_URL/health"
-python3 scripts/smoke.py
-node scripts/browser-smoke.mjs
+TEST_POSTCODE='<known valid postcode for the configured key>' python3 scripts/smoke.py
+TEST_POSTCODE='<known valid postcode for the configured key>' node scripts/browser-smoke.mjs
 ```
 
 The browser script uses `FRONTEND_URL`, operates the actual deployed UI, and persists deliveries through the public API. It needs Node 22+ and Google Chrome. Complete postcode → create → assign → pickup → transit → OTP → delivered, then confirm the final timeline and proof. Check browser CORS/network errors if the API works directly but not through the UI. Render may return a temporary HTML loading page while waking; warm `/health` first and retry once it is ready. No synthetic success state or local API fallback counts as public validation.
@@ -170,7 +172,7 @@ The test starts disposable PostgreSQL 16 and API containers with random temporar
 
 - `DATABASE_URL` belongs only in Render's environment. Never put it in `NEXT_PUBLIC_*`, Git, screenshots, or browser code.
 - No production authentication is introduced by hosting. `APP_MODE=production` still disables business operations. Demo access remains limited to dedicated fictional merchant/rider data; do not enable it against a sensitive database.
-- Keep `POSTCODE_PROVIDER=mock`; official NIPOST integration remains unconfigured.
+- Use `POSTCODE_PROVIDER=nipost` for official L1 verification and configure the key privately in Render. Use `mock` only for explicit offline development; failures never fall back. See [NIPOST.md](NIPOST.md) for the current sandbox API discrepancy and actual tests.
 - OTP display remains a demo-only operation with expiry, attempt limits, hashing, and replay prevention. Do not expose real recipient data or reuse these demo access rules in production.
 - Free Render services sleep and can be suspended by quota/excess outbound traffic (including database traffic); Neon/Vercel quotas also apply. Warm the demo manually shortly before presenting. Do not add artificial keep-alive traffic.
 

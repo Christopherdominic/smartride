@@ -61,3 +61,16 @@ See [deployment instructions](DEPLOYMENT.md) for the exact Railway and Vercel se
 The public browser test used a fresh Chrome profile and no authentication bypass. The browser harness was updated to wait for loaded riders and enabled controls so it handles remote latency correctly; these were test synchronization fixes, not application workarounds.
 
 Actual OTP expiry and production-mode denial were verified using the exact production image with disposable local PostgreSQL. The public service intentionally runs isolated demo mode; no production authentication or official NIPOST integration is claimed. Free-tier idle suspension and quotas remain applicable.
+
+## NIPOST L1 update — 25 October 2026
+
+- `cargo fmt --check`, `cargo check --locked --offline`, and `cargo test --locked --offline` passed; **9 Rust tests** cover normalization, bounded queries, authenticated L1-only requests, autocomplete parsing, invalid/malformed/mismatched responses, missing credentials, HTTP 401/402/403/429/500, timeout and network errors.
+- Frontend TypeScript, lint and production build passed with the separate customer-address/landmark form and runtime provider indicator.
+- Updated production Docker image built successfully.
+- `VERIFY_BROWSER=1 python3 scripts/nipost-integration.py` passed against a **local HTTP fixture**, dummy key and fresh disposable PostgreSQL. It exercises the actual Reqwest adapter, creation-time re-verification, customer-address provenance, invalid/unavailable/throttled lookup rejection, and rider/OTP API and Chrome workflows.
+- `VERIFY_BROWSER=1 python3 scripts/verify-container.py` passed against the release image in offline mock mode: all three migrations, idempotent seeding, merchant/rider/OTP/browser regression, CORS/rate limiting, production access denial, and non-root/custom-port/health checks. It additionally verified that the release binary rejects the debug-only loopback NIPOST base URL.
+- The actual private key was checked against tracked/candidate source and was absent. No credential is embedded in frontend code or build inputs.
+- **Real official API:** the configured key is a sandbox key. Official sandbox examples and user-provided `KT-14-B62-EB-16` returned HTTP 200 with `valid: false` / `not_found`; compact, spaced and hyphenated KT forms behaved identically. Autocomplete returned empty suggestions. A malformed postcode returned `status: invalid`; an unauthenticated request returned HTTP 401 / `auth_required`.
+- The user confirms the same Test key shows KT as Valid in the dashboard. No positive public-API validity result was observed, so **valid sandbox lookup and real NIPOST-backed delivery creation are not marked as passed**. No production key or higher lookup level was tested.
+
+See [NIPOST integration](NIPOST.md) for exact results, schema/provenance rules, configuration, error mapping and the remaining dashboard/API discrepancy. Earlier public positive workflow results in this document refer to the original offline demo, not a successful real NIPOST lookup.

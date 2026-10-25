@@ -48,7 +48,7 @@ try:
         containers.append(database)
         docker('run', '-d', '--name', database, '--network', network, '--env-file', str(db_env), '--tmpfs', '/var/lib/postgresql/data', 'postgres:16-alpine')
         for _ in range(120):
-            result = subprocess.run(['docker', 'exec', database, 'pg_isready', '-U', 'smartride'], capture_output=True)
+            result = subprocess.run(['docker', 'exec', database, 'pg_isready', '-h', '127.0.0.1', '-U', 'smartride', '-d', 'smartride'], capture_output=True)
             if result.returncode == 0:
                 break
             time.sleep(.5)
@@ -57,10 +57,12 @@ try:
             docker('run', '-d', '--name', name, '--network', network, '--env-file', str(api_env), '-e', f'APP_MODE={mode}', '-p', f'127.0.0.1:{port}:10000', IMAGE)
             ready(port)
         assert docker('exec', demo, 'id', '-u') == '10001'
+        refusal = subprocess.run(['docker','exec',demo,'env','POSTCODE_PROVIDER=nipost','NIPOST_API_BASE_URL=http://127.0.0.1:9999','NIPOST_API_KEY=nipost_test_fixture','smartride'], capture_output=True, text=True)
+        assert refusal.returncode != 0 and 'NIPOST base URL must be https://api.postcode.gov.ng' in refusal.stderr
         image_env = json.loads(docker('image', 'inspect', IMAGE, '--format', '{{json .Config.Env}}'))
         assert not any(item.startswith('DATABASE_URL=') for item in image_env)
         sql = ['exec', database, 'psql', '-U', 'smartride', '-d', 'smartride', '-Atc']
-        assert docker(*sql, 'SELECT count(*) FROM _sqlx_migrations WHERE success') == '2'
+        assert docker(*sql, 'SELECT count(*) FROM _sqlx_migrations WHERE success') == '3'
         assert docker(*sql, 'SELECT count(*) FROM merchants WHERE is_demo') == '1'
         assert docker(*sql, 'SELECT count(*) FROM riders') == '3'
         assert docker(*sql, 'SELECT count(*) FROM deliveries') == '5'

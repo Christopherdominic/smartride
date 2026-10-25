@@ -33,6 +33,7 @@ struct AppState {
 struct ApiError {
     status: StatusCode,
     message: String,
+    code: &'static str,
 }
 
 impl ApiError {
@@ -40,6 +41,7 @@ impl ApiError {
         Self {
             status,
             message: message.into(),
+            code: "request_failed",
         }
     }
 
@@ -66,18 +68,40 @@ impl ApiError {
 
 impl axum::response::IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
-        (self.status, Json(json!({ "error": self.message }))).into_response()
+        (
+            self.status,
+            Json(json!({ "error": self.message, "code": self.code })),
+        )
+            .into_response()
     }
 }
 
 impl From<PostcodeError> for ApiError {
     fn from(error: PostcodeError) -> Self {
-        match error {
-            PostcodeError::InvalidPostcode => Self::new(StatusCode::BAD_REQUEST, error.to_string()),
-            PostcodeError::NotFound => Self::new(StatusCode::NOT_FOUND, error.to_string()),
-            PostcodeError::Unavailable(_) => {
-                Self::new(StatusCode::BAD_GATEWAY, "postcode service unavailable")
+        let (status, code) = match &error {
+            PostcodeError::InvalidPostcode => (StatusCode::BAD_REQUEST, "invalid_postcode_format"),
+            PostcodeError::InvalidQuery => (StatusCode::BAD_REQUEST, "invalid_search_query"),
+            PostcodeError::NotFound => (StatusCode::NOT_FOUND, "postcode_not_found"),
+            PostcodeError::AuthenticationFailed => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "nipost_authentication_failed",
+            ),
+            PostcodeError::AccessDenied => (StatusCode::FORBIDDEN, "nipost_access_denied"),
+            PostcodeError::InsufficientCredits => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "nipost_insufficient_credits",
+            ),
+            PostcodeError::RateLimited => (StatusCode::TOO_MANY_REQUESTS, "postcode_rate_limited"),
+            PostcodeError::Timeout => (StatusCode::GATEWAY_TIMEOUT, "postcode_timeout"),
+            PostcodeError::MalformedResponse => {
+                (StatusCode::BAD_GATEWAY, "invalid_upstream_response")
             }
+            PostcodeError::Unavailable(_) => (StatusCode::BAD_GATEWAY, "postcode_unavailable"),
+        };
+        Self {
+            status,
+            code,
+            message: error.to_string(),
         }
     }
 }
@@ -107,6 +131,17 @@ async fn resolve_address(
     Ok(Json(address))
 }
 
+#[derive(Deserialize)]
+struct SearchQuery {
+    q: String,
+}
+async fn autocomplete(
+    State(state): State<AppState>,
+    Query(input): Query<SearchQuery>,
+) -> Result<Json<postcode::Autocomplete>, ApiError> {
+    Ok(Json(state.postcode.autocomplete(&input.q).await?))
+}
+
 #[derive(Debug, Deserialize)]
 struct CreateDelivery {
     merchant_id: Uuid,
@@ -114,6 +149,8 @@ struct CreateDelivery {
     recipient_name: String,
     recipient_phone: String,
     destination_postcode: String,
+    customer_address: Option<String>,
+    landmark: Option<String>,
     delivery_instructions: Option<String>,
     parcel_description: Option<String>,
 }
@@ -161,6 +198,31 @@ async fn create_delivery(
     {
         return Err(ApiError::new(StatusCode::BAD_REQUEST, "field too long"));
     }
+    let customer_address = input
+        .customer_address
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let landmark = input
+        .landmark
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    if customer_address.is_some_and(|s| s.chars().count() < 5 || s.chars().count() > 1000)
+        || landmark.is_some_and(|s| s.chars().count() > 500)
+    {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "address must be 5–1000 characters and landmark at most 500 characters",
+        ));
+    }
+    if state.postcode.name() == "nipost" && customer_address.is_none() {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "customer_address is required; NIPOST L1 verifies postcode validity only",
+        ));
+    }
+    // Reverify server-side: client claims or a previous browser lookup never authorize creation.
     let address = state.postcode.resolve(&input.destination_postcode).await?;
 
     let mut tx = state.db.begin().await.map_err(ApiError::database)?;
@@ -171,9 +233,9 @@ async fn create_delivery(
             postcode,
             formatted_address,
             provider,
-            provider_data
+            provider_data, customer_address, landmark, postcode_verified_at
         )
-        VALUES ($1, $2, $3, $4)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING id
         "#,
     )
@@ -181,6 +243,13 @@ async fn create_delivery(
     .bind(&address.formatted_address)
     .bind(&address.provider)
     .bind(&address.provider_data)
+    .bind(customer_address)
+    .bind(landmark)
+    .bind(if address.provider == "nipost" {
+        Some(Utc::now())
+    } else {
+        None
+    })
     .fetch_one(&mut *tx)
     .await
     .map_err(ApiError::database)?;
@@ -283,8 +352,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let postcode: Arc<dyn PostcodeProvider> = match provider_name.as_str() {
         "mock" => Arc::new(MockPostcodeProvider),
         "nipost" => Arc::new(NipostProvider::new(
-            env::var("NIPOST_API_BASE_URL")?,
-            env::var("NIPOST_API_KEY")?,
+            env::var("NIPOST_API_BASE_URL")
+                .unwrap_or_else(|_| "https://api.postcode.gov.ng".into()),
+            env::var("NIPOST_API_KEY").unwrap_or_default(),
         )?),
         other => {
             return Err(format!("Unknown POSTCODE_PROVIDER: {other}").into());
@@ -292,9 +362,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let demo = env::var("APP_MODE").unwrap_or_else(|_| "production".into()) == "demo";
-    if demo && provider_name != "mock" {
-        return Err("demo mode requires mock postcodes".into());
-    }
     if demo {
         workflow::seed(&db).await?;
     }
@@ -326,6 +393,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/v1/deliveries/{id}/otp", post(workflow::issue))
         .route("/api/v1/deliveries/{id}/confirm", post(workflow::confirm))
         .route("/api/v1/addresses/resolve", get(resolve_address))
+        .route("/api/v1/addresses/autocomplete", get(autocomplete))
         .route(
             "/api/v1/deliveries",
             get(workflow::list).post(create_delivery),
@@ -343,7 +411,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/docs", get(workflow::docs))
         .with_state(state)
         .layer(cors)
-        .layer(TraceLayer::new_for_http());
+        .layer(TraceLayer::new_for_http().make_span_with(|request: &axum::http::Request<_>| tracing::info_span!("http_request", method=%request.method(),path=request.uri().path())));
 
     let port: u16 = env::var("PORT").unwrap_or_else(|_| "8080".into()).parse()?;
 

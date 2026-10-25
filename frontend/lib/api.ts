@@ -18,6 +18,12 @@ export type Delivery = {
   recipient_phone: string;
   postcode: string;
   formatted_address: string;
+  customer_address: string | null;
+  landmark: string | null;
+  address_source: "customer" | "offline_demo";
+  postcode_provider: "mock" | "nipost";
+  postcode_verified: boolean;
+  postcode_environment: string | null;
   status: Status;
   rider_id: string | null;
   rider_name: string | null;
@@ -35,14 +41,25 @@ export type Rider = {
 };
 export type Config = {
   mode: "demo";
-  provider: "mock";
+  provider: "mock" | "nipost";
+  environment: "offline" | "sandbox" | "production" | "unknown";
+  customer_address_required: boolean;
   merchant: { id: string; name: string };
   postcodes: string[];
 };
 export type Address = {
   postcode: string;
-  formatted_address: string;
-  provider: string;
+  formatted_address: string | null;
+  provider: "mock" | "nipost";
+  provider_data: {
+    verified: boolean;
+    lookup_level?: number;
+    environment?: string;
+  };
+};
+export type Autocomplete = {
+  segment: string;
+  suggestions: { code: string; label: string }[];
 };
 export type Stats = {
   total: number;

@@ -8,7 +8,7 @@ SmartRide helps merchants create deliveries from digital postcodes, assign rider
 
 [**Launch the demo**](https://smartride-kappa.vercel.app/demo) · [Merchant dashboard](https://smartride-kappa.vercel.app/dashboard) · [Rider workspace](https://smartride-kappa.vercel.app/rider) · [API documentation](https://smartride-api-bfrg.onrender.com/docs)
 
-> **Demo data:** This public prototype uses fictional postcodes, addresses, and shared merchant/rider records. Use sample recipient details only. Live NIPOST integration is unconfigured, pending verified official documentation and credentials.
+> **Shared demo:** Use sample recipient details only. NIPOST L1 verifies postcode validity; street addresses and directions are customer-provided and are not NIPOST-verified. Sandbox keys use the sandbox dataset. Offline mock mode remains available for development. See [NIPOST integration and actual API results](docs/NIPOST.md).
 
 ## Overview
 
@@ -20,14 +20,14 @@ Digital postcode → Resolved address → Delivery order → Rider assignment
 Proof of delivery ← OTP confirmation ← Delivery tracking
 ```
 
-The project explores the application of Nigeria’s NIPOST National Digital Alphanumeric Postcode System (NDAPS) concept to merchant and logistics operations. Its mock postcode fixtures are demonstration conventions, not verified NIPOST data or an official NDAPS validation specification.
+The project explores the application of Nigeria’s NIPOST National Digital Alphanumeric Postcode System (NDAPS) concept to merchant and logistics operations. Its official API adapter requests only Lookup Level 1. The postcode, customer-provided street address, and landmark are recorded separately with explicit provenance; no street address or coordinates are inferred from L1.
 
 ## Implemented capabilities
 
 | Area | Capabilities |
 | --- | --- |
 | Merchant operations | Delivery creation, recent deliveries, status breakdowns, dashboard statistics, and delivery details |
-| Postcode resolution | Three fictional postcode fixtures, address previews, and a provider abstraction for future official integration |
+| Postcode verification | Official NIPOST L1 lookup, bounded server-side autocomplete, five-segment validation, and an offline mock provider |
 | Rider coordination | Rider registration, workload visibility, assignment, and assigned-delivery views |
 | Delivery tracking | Enforced lifecycle transitions, terminal failure handling, and persisted event timelines |
 | Proof of delivery | Secure six-digit OTP generation, hashed storage, expiry, attempt limits, and replay prevention |
@@ -51,22 +51,25 @@ Active deliveries can be marked as `failed`. Invalid transitions are rejected, a
 | API explorer | Swagger UI | [Interactive documentation](https://smartride-api-bfrg.onrender.com/docs) |
 | Database | Neon Free | Dedicated PostgreSQL 16 demo project; accessed only by the backend |
 
-The complete public browser workflow was verified on **25 October 2026**. See the [validation record](docs/VALIDATION.md) for executed checks and deployment evidence.
+The original offline demo’s public workflow was verified on **25 October 2026**. The NIPOST update passes fixture-based L1 workflow tests, but its real API currently reports the documented and user-provided sandbox codes as not found; a positive official lookup remains unverified. See [actual NIPOST results](docs/NIPOST.md). See the [validation record](docs/VALIDATION.md) for executed checks and deployment evidence.
 
 **Free-tier availability:** Render sleeps after idle periods. Allow approximately one minute for the first API request to wake the service before presenting the demo. Hosting quotas also apply.
 
 ## Three-minute demo
 
 1. Open the [guided demo](https://smartride-kappa.vercel.app/demo). The dedicated **Lagos Market • Demo** merchant is selected.
-2. Resolve one of the fictional postcodes below to preview its address.
-3. Use the supplied sample recipient details, describe the parcel, and create the delivery.
-4. Select a rider and click **Assign rider**.
-5. Click **Mark parcel picked up**, then **Start delivery**.
-6. Click **Generate demo OTP** and enter the displayed six-digit code.
-7. Click **Confirm delivery**. Review the completed timeline and confirmed proof of delivery.
-8. Visit the merchant dashboard for updated statistics, or the rider workspace to view assigned deliveries.
+2. Enter a postcode appropriate to the configured key’s dataset and click **Verify postcode**. Autocomplete is available if the key has search scope.
+3. Supply the customer’s full delivery address and optional landmark; L1 does not verify these details.
+4. Use the supplied sample recipient details, describe the parcel, and create the delivery.
+5. Select a rider and click **Assign rider**.
+6. Click **Mark parcel picked up**, then **Start delivery**.
+7. Click **Generate demo OTP** and enter the displayed six-digit code.
+8. Click **Confirm delivery**. Review the completed timeline and confirmed proof of delivery.
+9. Visit the merchant dashboard for updated statistics, or the rider workspace to view assigned deliveries.
 
-| Demo postcode | Fictional destination |
+The following fixtures apply **only to offline mock mode**, where **Resolve postcode** previews the fictional destination. They are not NIPOST sandbox or production samples.
+
+| Offline demo postcode | Fictional destination |
 | --- | --- |
 | `EK01A03FK01` | Demo Building, Test District, Nigeria |
 | `LA01A03IK01` | Fictional Market House, Demo Lagos District, Nigeria |
@@ -98,6 +101,7 @@ frontend/
 docs/
   DEPLOYMENT.md         Hosting configuration and exact redeployment commands
   VALIDATION.md         Local, container, and public verification results
+  NIPOST.md             L1 contract, environment configuration, and real API results
   openapi.json          API specification
 scripts/                API, browser, security, and container verification
 render.yaml             Free Render service configuration
@@ -156,7 +160,9 @@ npm run dev
 | --- | --- | --- |
 | `DATABASE_URL` | Backend only | PostgreSQL connection string; use a direct TLS connection for Neon |
 | `APP_MODE` | Backend | Set to `demo` for the isolated workflow; defaults to `production` |
-| `POSTCODE_PROVIDER` | Backend | Set to `mock` for the working demonstration |
+| `POSTCODE_PROVIDER` | Backend | `nipost` for official L1 verification; `mock` for offline development |
+| `NIPOST_API_BASE_URL` | Backend | `https://api.postcode.gov.ng` |
+| `NIPOST_API_KEY` | Backend only | Private NIPOST key; never expose it through frontend configuration |
 | `FRONTEND_ORIGIN` | Backend | Exact permitted browser origin, including scheme and without a trailing slash |
 | `PORT` | Backend | Runtime listening port; defaults to `8080` |
 | `RUST_LOG` | Backend | Logging level, typically `info` |
@@ -171,8 +177,9 @@ See the [OpenAPI specification](docs/openapi.json) for request and response sche
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
 | GET | `/health` | Database readiness |
-| GET | `/api/v1/demo` | Demo merchant and fictional postcodes |
-| GET | `/api/v1/addresses/resolve?postcode=...` | Resolve a fictional postcode |
+| GET | `/api/v1/demo` | Demo merchant, provider, dataset environment, and address requirements |
+| GET | `/api/v1/addresses/resolve?postcode=...` | Verify postcode validity (or resolve an offline fixture) |
+| GET | `/api/v1/addresses/autocomplete?q=...` | Bounded server-side NIPOST autocomplete |
 | GET, POST | `/api/v1/deliveries` | List or create demo merchant deliveries |
 | GET | `/api/v1/deliveries/{id}` | Delivery details, address, rider, proof, and timeline |
 | GET | `/api/v1/stats` | Merchant dashboard statistics |
@@ -183,7 +190,7 @@ See the [OpenAPI specification](docs/openapi.json) for request and response sche
 | POST | `/api/v1/deliveries/{id}/otp` | Generate an OTP with demo-only display |
 | POST | `/api/v1/deliveries/{id}/confirm` | Verify the OTP and complete delivery atomically |
 
-Errors use `{"error":"message"}`. Business endpoints return `403` outside demo mode. Delivery lists show the latest 200 records; statistics include all records.
+Errors use `{"error":"message","code":"category"}`. Business endpoints return `403` outside demo mode. Delivery lists show the latest 200 records; statistics include all records.
 
 ## Security and MVP boundaries
 
@@ -196,7 +203,7 @@ The implemented safeguards include:
 - **Transactional integrity:** Row locks serialize OTP verification; failed attempts persist, and successful confirmation commits the delivery state and event together.
 - **Request controls:** Exact-origin CORS, input length checks, JSON body limits, foreign-key constraints, and an aggregate limit of 240 API requests per minute per instance.
 
-The rate limiter is intended for a single-instance demo. Real deployments require authenticated merchant/rider access, distributed abuse prevention, customer messaging, and an official postcode integration. Payments, dispatch optimization, and cancellation workflows are outside this MVP’s scope.
+The rate limiter is intended for a single-instance demo. Real deployments require authenticated merchant/rider access, distributed abuse prevention, customer messaging, and operational controls appropriate for customer data. Payments, dispatch optimization, and cancellation workflows are outside this MVP’s scope.
 
 **OTP recovery:** If a displayed code is lost, wait for its five-minute expiry before requesting another. Five incorrect attempts lock that delivery’s OTP flow; create a new sample delivery to continue the demonstration.
 
@@ -230,7 +237,7 @@ TEST_DB_CONTAINER=smartride-postgres \
 python3 scripts/smoke.py
 ```
 
-The smoke test creates sample deliveries. `TEST_DB_CONTAINER` enables database-level migration, hash-storage, and OTP-expiry checks against newly created test records. Omit it when testing a remote API; use only a dedicated demo database.
+The smoke test creates sample deliveries. In NIPOST mode, supply `TEST_POSTCODE` with a code known to be valid for the configured key; no real positive NIPOST test is claimed unless that API returns valid. `TEST_DB_CONTAINER` enables database-level migration, hash-storage, and OTP-expiry checks against newly created test records. Omit it when testing a remote API; use only a dedicated demo database.
 
 ### Production container
 
@@ -248,7 +255,7 @@ FRONTEND_URL=https://smartride-kappa.vercel.app \
 node scripts/browser-smoke.mjs
 ```
 
-The browser test requires Node.js 22+ and Google Chrome. Set `CHROME_PATH` to override `/usr/bin/google-chrome`. It verifies the actual UI workflow and saves desktop/mobile screenshots under `/tmp/smartride-*.png`.
+In NIPOST mode, also set `TEST_POSTCODE` to a known valid code for the configured dataset. The browser test requires Node.js 22+ and Google Chrome. Set `CHROME_PATH` to override `/usr/bin/google-chrome`. It verifies the actual UI workflow and saves desktop/mobile screenshots under `/tmp/smartride-*.png`.
 
 For local browser testing, run the API on port 8081 and build the frontend with `NEXT_PUBLIC_API_BASE_URL=http://localhost:8081` before starting it. The security script additionally expects a production-mode API on port 8082 and intentionally exhausts the demo rate limit; run it last.
 

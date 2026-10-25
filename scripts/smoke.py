@@ -14,11 +14,13 @@ def request(path,body=None,status=200):
  assert code in (status if isinstance(status, tuple) else (status,)),(path,code,result,status)
  return result
 config=request('/api/v1/demo');merchant=config['merchant']['id'];riders=request('/api/v1/riders');rider=riders[0]['id']
-for postcode in config['postcodes']:
- a=request('/api/v1/addresses/resolve?postcode='+postcode);assert a['provider']=='mock' and not a['provider_data']['verified']
+postcodes=config['postcodes'] if config['provider']=='mock' else [os.environ['TEST_POSTCODE']]
+customer_address='12 Sample Street, Demo District, Test City'
+for postcode in postcodes:
+ a=request('/api/v1/addresses/resolve?postcode='+postcode);assert a['provider']==config['provider'] and a['provider_data']['verified']==(config['provider']=='nipost')
 request('/api/v1/addresses/resolve?postcode=invalid',status=400)
 def create():
- return request('/api/v1/deliveries',dict(merchant_id=merchant,recipient_name='Smoke Test Recipient',recipient_phone='+2340000000000',destination_postcode=config['postcodes'][0],parcel_description='Integration test'),201)['id']
+ return request('/api/v1/deliveries',dict(merchant_id=merchant,recipient_name='Smoke Test Recipient',recipient_phone='+2340000000000',destination_postcode=postcodes[0],customer_address=customer_address,landmark='Sample landmark',parcel_description='Integration test'),201)['id']
 def action(id,op,body=None,status=200):return request(f'/api/v1/deliveries/{id}/{op}',body or {},status)
 def advance(id):
  action(id,'assign',{'rider_id':rider})
@@ -36,11 +38,13 @@ action(id,'confirm',{'rider_id':str(uuid.uuid4()),'code':otp},409)
 wrong='000000' if otp!='000000' else '111111'
 action(id,'confirm',{'rider_id':rider,'code':wrong},400)
 d=action(id,'confirm',{'rider_id':rider,'code':otp});assert d['status']=='delivered' and d['proof_confirmed']
+assert d['customer_address']==customer_address and d['formatted_address']==customer_address and d['address_source']=='customer'
+assert d['postcode_verified']==(config['provider']=='nipost') and d['landmark']=='Sample landmark'
 action(id,'confirm',{'rider_id':rider,'code':otp},409)
 action(id,'otp',status=409)
 assert [e['event_type'] for e in d['events']]==['created','assigned','picked_up','out_for_delivery','delivered']
 assert any(d['id']==x['id'] for x in request('/api/v1/riders/'+rider+'/deliveries'))
-request('/api/v1/deliveries',dict(merchant_id=str(uuid.uuid4()),recipient_name='Demo',recipient_phone='000',destination_postcode=config['postcodes'][0]),403)
+request('/api/v1/deliveries',dict(merchant_id=str(uuid.uuid4()),recipient_name='Demo',recipient_phone='000',destination_postcode=postcodes[0]),403)
 request('/api/v1/deliveries/'+str(uuid.uuid4()),status=404)
 id2=create();advance(id2);otp2=action(id2,'otp')['demo_otp'];wrong='000000' if otp2!='000000' else '111111'
 for _ in range(5):action(id2,'confirm',{'rider_id':rider,'code':wrong},400)
@@ -50,7 +54,7 @@ if os.environ.get('TEST_DB_CONTAINER'):
  id3=create();advance(id3);otp3=action(id3,'otp')['demo_otp']
  sql(f"UPDATE delivery_otps SET expires_at=NOW()-INTERVAL '1 second' WHERE delivery_id='{id3}'")
  action(id3,'confirm',{'rider_id':rider,'code':otp3},409)
- assert sql('SELECT count(*) FROM _sqlx_migrations WHERE success')=='2'
+ assert sql('SELECT count(*) FROM _sqlx_migrations WHERE success')=='3'
  print('PASS: additive migrations, bcrypt-only storage, actual expired OTP rejection')
 assert request('/api/v1/stats')['completed']>0
 request('/health');request('/openapi.json')
