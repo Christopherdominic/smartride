@@ -74,3 +74,16 @@ Actual OTP expiry and production-mode denial were verified using the exact produ
 - The user confirms the same Test key shows KT as Valid in the dashboard. No positive public-API validity result was observed, so **valid sandbox lookup and real NIPOST-backed delivery creation are not marked as passed**. No production key or higher lookup level was tested.
 
 See [NIPOST integration](NIPOST.md) for exact results, schema/provenance rules, configuration, error mapping and the remaining dashboard/API discrepancy. Earlier public positive workflow results in this document refer to the original offline demo, not a successful real NIPOST lookup.
+
+### Final deployed NIPOST checks
+
+- Backend deployment `dep-dber63s9v7es73cp7q1g` is **live** at application commit `721cd6991e3a3579f90d5e491d9a5211a581ce6c`. Frontend deployment `dpl_EkSQ5wtA6MJurT35RUXViigH3S2Z` is **READY** at the existing production alias.
+- Hosted configuration verified: `provider=nipost`, `environment=sandbox`, `lookup_level=1`, `customer_address_required=true`. The actual key is privately stored in Render and matches the local secret. Database, CORS, port and APP_MODE settings were preserved.
+- A transport compatibility issue was reproduced: default Reqwest/no User-Agent returned upstream HTTP 403/non-JSON; the same request with `User-Agent: SmartRide/0.3` returned HTTP 200. The standard application identifier fixes this without changing permissions or lookup level. Unit HTTP fixtures assert this header, and all nine Rust tests passed again.
+- The final release image rebuilt and passed API/rider/OTP/expiry/replay/attempt/concurrency, migration, health, non-root, production denial and CORS/rate-limit checks again. It rejects the debug-only loopback provider URL.
+- Final public proxy checks passed: KT and the official FC sandbox sample return SmartRide `404/postcode_not_found` from the upstream negative validity result; malformed formats return `400/invalid_postcode_format`; autocomplete returns HTTP 200 with an empty list; short queries are rejected.
+- A public creation request with a supplied address and forged `postcode_verified: true` was rejected after real server-side lookup. Delivery counts remained unchanged. Existing delivery history, address provenance and riders still load after migration.
+- The private key was absent from tracked files and 21 browser JavaScript bundles; environment and provider CLI auth files remain ignored.
+- Final anonymous public Chrome check passed with `FRONTEND_URL=https://smartride-kappa.vercel.app TEST_POSTCODE=KT-14-B62-EB-16 EXPECT_INVALID_POSTCODE=1 node scripts/browser-smoke.mjs`: the real negative result is shown, no verified badge or fictional lookup address is displayed, a separate customer address is required, and unverified order creation remains disabled. This is a negative-result UI test, not successful real postcode verification.
+
+**Remaining external limitation:** the API still reports the user-confirmed dashboard-valid code as not found. No successful real NIPOST validity result or NIPOST-backed delivery completion is claimed. Positive L1 end-to-end coverage uses a local HTTP fixture; offline mock mode and the existing lifecycle remain tested and functional.
