@@ -77,6 +77,7 @@ impl NipostProvider {
         headers.insert("X-API-Key", key);
         headers.insert("Accept", HeaderValue::from_static("application/json"));
         let client = Client::builder()
+            .user_agent("SmartRide/0.3")
             .default_headers(headers)
             .timeout(timeout)
             .redirect(reqwest::redirect::Policy::none())
@@ -229,6 +230,7 @@ mod tests {
                     let content = content.clone();
                     async move {
                         assert_eq!(headers["x-api-key"], "nipost_test_fixture");
+                        assert_eq!(headers["user-agent"], "SmartRide/0.3");
                         assert_eq!(q.get("level").unwrap(), "1");
                         tokio::time::sleep(delay).await;
                         (StatusCode::from_u16(status).unwrap(), content).into_response()

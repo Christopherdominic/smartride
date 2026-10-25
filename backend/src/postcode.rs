@@ -30,7 +30,7 @@ pub enum PostcodeError {
     NotFound,
     #[error("NIPOST rejected the configured API credentials")]
     AuthenticationFailed,
-    #[error("NIPOST access denied; the configured key may lack lookup or search scope")]
+    #[error("NIPOST access denied; check configured key permissions and request restrictions")]
     AccessDenied,
     #[error("NIPOST reports insufficient credits")]
     InsufficientCredits,

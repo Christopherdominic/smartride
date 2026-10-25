@@ -124,54 +124,88 @@ try {
     );
   }
   await click(live ? "Verify postcode" : "Resolve postcode");
-  await wait('document.querySelector(".address-preview") !== null');
-  await evaluate(
-    `(()=>{const t=document.querySelector('textarea[name="customer_address"]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(t,'12 Sample Street, Demo District, Test City');t.dispatchEvent(new Event('input',{bubbles:true}))})()`,
-  );
-  await pause(100);
-  await click("Create delivery");
-  await wait(
-    'location.pathname.includes("/dashboard/deliveries/") && document.querySelector(".delivery-actions select") !== null',
-  );
-  await wait(
-    'document.querySelector(".delivery-actions select")?.options.length > 1',
-  );
-  await evaluate(
-    `(()=>{const s=document.querySelector('.delivery-actions select');s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}))})()`,
-  );
-  await click("Assign rider");
-  await wait('document.body.innerText.includes("Mark parcel picked up")');
-  await click("Mark parcel picked up");
-  await wait('document.body.innerText.includes("Start delivery")');
-  await click("Start delivery");
-  await wait('document.body.innerText.includes("Generate demo OTP")');
-  await click("Generate demo OTP");
-  await wait('document.querySelector(".otp-display strong") !== null');
-  await evaluate(
-    `(()=>{const code=document.querySelector('.otp-display strong').textContent;const input=document.querySelector('input[autocomplete="one-time-code"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,code);input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}))})()`,
-  );
-  await pause(200);
-  await click("Confirm delivery");
-  await wait('document.body.innerText.includes("Confirmed with OTP")');
-  await screenshot("smartride-delivered-mobile.png", 390, 844);
-  const timeline = await evaluate(
-    '[...document.querySelectorAll(".timeline strong")].map(e=>e.textContent)',
-  );
-  if (
-    timeline.join(",") !==
-    "created,assigned,picked up,out for delivery,delivered"
-  )
-    throw Error("Unexpected timeline " + timeline);
-  await navigate("/dashboard");
-  await wait('document.querySelector("tbody tr") !== null');
-  await screenshot("smartride-dashboard-mobile.png", 390, 844);
-  await navigate("/rider");
-  await wait(
-    'document.querySelector(".rider-select select")?.options.length > 1',
-  );
-  console.log(
-    "PASS: actual browser workflow, OTP proof and timeline; landing/dashboard/detail responsive at 390px; screenshots in /tmp/smartride-*.png",
-  );
+  if (process.env.EXPECT_INVALID_POSTCODE === "1") {
+    if (!live)
+      throw Error("Negative NIPOST check requires the NIPOST provider");
+    await wait(
+      `document.querySelector('[role="alert"]')?.textContent.includes('not found')`,
+    );
+    if (
+      await evaluate(
+        `document.body.innerText.includes('Postcode verified by NIPOST') || document.querySelector('.address-preview') !== null`,
+      )
+    )
+      throw Error("Invalid code presented as verified");
+    if (
+      !(await evaluate(
+        `document.querySelector('textarea[name="customer_address"]')?.required`,
+      ))
+    )
+      throw Error("Customer-provided address must be required independently");
+    await evaluate(
+      `(()=>{const t=document.querySelector('textarea[name="customer_address"]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(t,'12 Sample Street, Demo City');t.dispatchEvent(new Event('input',{bubbles:true}))})()`,
+    );
+    await pause(100);
+    if (
+      !(await evaluate(
+        `[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Create delivery'))?.disabled`,
+      ))
+    )
+      throw Error("Creation enabled without valid L1 verification");
+    await screenshot("smartride-invalid-postcode-mobile.png", 390, 844);
+    console.log(
+      "PASS: public NIPOST invalid result displayed; no verified badge or fictional address; customer address required; delivery creation blocked",
+    );
+  } else {
+    await wait('document.querySelector(".address-preview") !== null');
+    await evaluate(
+      `(()=>{const t=document.querySelector('textarea[name="customer_address"]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(t,'12 Sample Street, Demo District, Test City');t.dispatchEvent(new Event('input',{bubbles:true}))})()`,
+    );
+    await pause(100);
+    await click("Create delivery");
+    await wait(
+      'location.pathname.includes("/dashboard/deliveries/") && document.querySelector(".delivery-actions select") !== null',
+    );
+    await wait(
+      'document.querySelector(".delivery-actions select")?.options.length > 1',
+    );
+    await evaluate(
+      `(()=>{const s=document.querySelector('.delivery-actions select');s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}))})()`,
+    );
+    await click("Assign rider");
+    await wait('document.body.innerText.includes("Mark parcel picked up")');
+    await click("Mark parcel picked up");
+    await wait('document.body.innerText.includes("Start delivery")');
+    await click("Start delivery");
+    await wait('document.body.innerText.includes("Generate demo OTP")');
+    await click("Generate demo OTP");
+    await wait('document.querySelector(".otp-display strong") !== null');
+    await evaluate(
+      `(()=>{const code=document.querySelector('.otp-display strong').textContent;const input=document.querySelector('input[autocomplete="one-time-code"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,code);input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}))})()`,
+    );
+    await pause(200);
+    await click("Confirm delivery");
+    await wait('document.body.innerText.includes("Confirmed with OTP")');
+    await screenshot("smartride-delivered-mobile.png", 390, 844);
+    const timeline = await evaluate(
+      '[...document.querySelectorAll(".timeline strong")].map(e=>e.textContent)',
+    );
+    if (
+      timeline.join(",") !==
+      "created,assigned,picked up,out for delivery,delivered"
+    )
+      throw Error("Unexpected timeline " + timeline);
+    await navigate("/dashboard");
+    await wait('document.querySelector("tbody tr") !== null');
+    await screenshot("smartride-dashboard-mobile.png", 390, 844);
+    await navigate("/rider");
+    await wait(
+      'document.querySelector(".rider-select select")?.options.length > 1',
+    );
+    console.log(
+      "PASS: actual browser workflow, OTP proof and timeline; landing/dashboard/detail responsive at 390px; screenshots in /tmp/smartride-*.png",
+    );
+  }
 } finally {
   ws?.close();
   chrome.kill();

@@ -15,9 +15,9 @@ SmartRide helps merchants create deliveries from digital postcodes, assign rider
 Last-mile delivery depends on identifying the destination and coordinating each handoff. SmartRide demonstrates how digital postcode resolution can become the starting point for a connected delivery workflow:
 
 ```text
-Digital postcode → Resolved address → Delivery order → Rider assignment
-                                                     ↓
-Proof of delivery ← OTP confirmation ← Delivery tracking
+Digital postcode → L1 validity check → Customer-provided address
+                                                   ↓
+Proof of delivery ← OTP ← Tracking ← Rider assignment ← Delivery order
 ```
 
 The project explores the application of Nigeria’s NIPOST National Digital Alphanumeric Postcode System (NDAPS) concept to merchant and logistics operations. Its official API adapter requests only Lookup Level 1. The postcode, customer-provided street address, and landmark are recorded separately with explicit provenance; no street address or coordinates are inferred from L1.

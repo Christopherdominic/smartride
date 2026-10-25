@@ -23,7 +23,7 @@ Canonical display format is `AA-99-H77-BB-55`. Compact and spaced forms are acce
 
 The backend autocomplete route is `/api/v1/addresses/autocomplete?q=...`. Queries contain 2–30 ASCII letters/digits/spaces/hyphens. Responses expose at most ten validated suggestions for the active segment. The frontend offers a search action, supports segment selection, and requires separate verification of the complete postcode. Search-scope denial is shown without preventing manual entry and lookup.
 
-Lookup, autocomplete, and creation-time re-verification share a **60 upstream requests/minute per-instance** budget, in addition to the existing general API limiter. There are no automatic upstream retries, higher-level requests, or silent mock fallbacks. Requests time out after ten seconds, reject redirects, and cap response bodies at 64 KiB. Release builds only send credentials to the exact official HTTPS origin. Debug builds additionally support loopback HTTP fixtures for automated integration tests; this exception is absent from the release binary.
+Lookup, autocomplete, and creation-time re-verification share a **60 upstream requests/minute per-instance** budget, in addition to the existing general API limiter. There are no automatic upstream retries, higher-level requests, or silent mock fallbacks. Requests identify the client as `SmartRide/0.3`, time out after ten seconds, reject redirects, and cap response bodies at 64 KiB. Actual gateway testing showed that requests without a User-Agent receive HTTP 403/non-JSON; the explicit application User-Agent restores HTTP 200 without changing key permissions or lookup level. Release builds only send credentials to the exact official HTTPS origin. Debug builds additionally support loopback HTTP fixtures for automated integration tests; this exception is absent from the release binary.
 
 | Condition | SmartRide HTTP status / machine code |
 | --- | --- |
@@ -108,3 +108,7 @@ node scripts/browser-smoke.mjs
 ```
 
 The scripts require explicit `TEST_POSTCODE` in NIPOST mode and never substitute a production sample for a sandbox key. They create sample records only. Current negative real API results must be resolved before claiming these real positive tests have passed.
+
+## Hosting rollout
+
+The frontend and additive backend changes are deployed. Render has `POSTCODE_PROVIDER=nipost`, the official base URL, and the existing sandbox secret configured privately; database/CORS/PORT/APP_MODE settings are preserved. The public configuration endpoint reports `nipost`, `sandbox`, and lookup level 1. The initial deployed default-Reqwest requests hit the gateway's missing-User-Agent 403; the client compatibility fix adds an explicit application identifier. Final proxy/browser checks are recorded in [VALIDATION.md](VALIDATION.md).
