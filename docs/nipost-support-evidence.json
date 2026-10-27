@@ -1,0 +1,160 @@
+{
+  "checked_at": "2026-10-27T10:26:53.907244+00:00",
+  "environment": "sandbox",
+  "local_deployed_key_match": true,
+  "configuration": {
+    "POSTCODE_PROVIDER": {
+      "local": "mock",
+      "deployed": "nipost"
+    },
+    "NIPOST_API_BASE_URL": {
+      "local": "https://api.postcode.gov.ng",
+      "deployed": "https://api.postcode.gov.ng"
+    }
+  },
+  "requests": [
+    {
+      "path": "/api/v1/demo",
+      "authenticated": false,
+      "http_status": 200,
+      "duration_ms": 521,
+      "request_id": "99f6002f-5172-4685-8055-a7b7bd7ff40e",
+      "upstream_ids": {
+        "cf-ray": "a511014faae74920-LOS"
+      },
+      "response": {
+        "provider": "nipost",
+        "environment": "sandbox",
+        "lookup_level": 1,
+        "customer_address_required": true
+      }
+    },
+    {
+      "path": "/v1/lookup?code=FC-01-A01-KP-27&level=1",
+      "authenticated": true,
+      "http_status": 200,
+      "duration_ms": 774,
+      "request_id": "197e5d03-1d89-42b2-b2af-4dfe3d0c069a",
+      "upstream_ids": {},
+      "response": {
+        "data": {
+          "postcode": "FC-01-A01-KP-27",
+          "valid": false,
+          "status": "not_found",
+          "verified": false
+        }
+      }
+    },
+    {
+      "path": "/api/v1/addresses/resolve?postcode=FC-01-A01-KP-27",
+      "authenticated": false,
+      "http_status": 404,
+      "duration_ms": 408,
+      "request_id": "c4e6a7ec-ef53-4093-b759-894d381546fa",
+      "upstream_ids": {
+        "cf-ray": "a5110157edce392a-LOS"
+      },
+      "response": {
+        "code": "postcode_not_found"
+      }
+    },
+    {
+      "path": "/v1/lookup?code=KT-14-B62-EB-16&level=1",
+      "authenticated": true,
+      "http_status": 200,
+      "duration_ms": 530,
+      "request_id": "d73019e2-27f3-49d8-b6b1-18fbb4140cbd",
+      "upstream_ids": {},
+      "response": {
+        "data": {
+          "postcode": "KT-14-B62-EB-16",
+          "valid": false,
+          "status": "not_found",
+          "verified": false
+        }
+      }
+    },
+    {
+      "path": "/api/v1/addresses/resolve?postcode=KT-14-B62-EB-16",
+      "authenticated": false,
+      "http_status": 404,
+      "duration_ms": 525,
+      "request_id": "cdd9d4af-58cb-4d84-8da8-b7956c3e0d8d",
+      "upstream_ids": {
+        "cf-ray": "a511015dbe2596ab-LOS"
+      },
+      "response": {
+        "code": "postcode_not_found"
+      }
+    },
+    {
+      "path": "/v1/search/autocomplete?q=FC",
+      "authenticated": true,
+      "http_status": 200,
+      "duration_ms": 1373,
+      "request_id": "1a31f715-a11c-465d-b9ea-006feba80a0f",
+      "upstream_ids": {},
+      "response": {
+        "data": {
+          "segment": "state",
+          "suggestion_count": 0
+        }
+      }
+    },
+    {
+      "path": "/api/v1/addresses/autocomplete?q=FC",
+      "authenticated": false,
+      "http_status": 200,
+      "duration_ms": 833,
+      "request_id": "7d9ea175-8d27-4672-a8ae-f67295319c93",
+      "upstream_ids": {
+        "cf-ray": "a511016a4cc4593a-CPT"
+      },
+      "response": {
+        "segment": "state",
+        "suggestion_count": 0
+      }
+    },
+    {
+      "path": "/v1/search/autocomplete?q=KT",
+      "authenticated": true,
+      "http_status": 200,
+      "duration_ms": 436,
+      "request_id": "18efb185-8ec2-452b-91f9-164aeeb1dbc7",
+      "upstream_ids": {},
+      "response": {
+        "data": {
+          "segment": "state",
+          "suggestion_count": 0
+        }
+      }
+    },
+    {
+      "path": "/api/v1/addresses/autocomplete?q=KT",
+      "authenticated": false,
+      "http_status": 200,
+      "duration_ms": 294,
+      "request_id": "53e21aff-4bce-48c2-8b6d-dcdc9b597481",
+      "upstream_ids": {
+        "cf-ray": "a511017139507a78-LOS"
+      },
+      "response": {
+        "segment": "state",
+        "suggestion_count": 0
+      }
+    },
+    {
+      "path": "/v1/lookup?code=FC-01-A01-KP-27&level=1",
+      "authenticated": false,
+      "http_status": 401,
+      "duration_ms": 485,
+      "request_id": "02772c3c-e17f-4f6d-a347-1a3de2cc169b",
+      "upstream_ids": {},
+      "response": {
+        "error": {
+          "code": "auth_required"
+        }
+      }
+    }
+  ]
+}

@@ -114,3 +114,7 @@ The scripts require explicit `TEST_POSTCODE` in NIPOST mode and never substitute
 The frontend and additive backend changes are deployed. Render has `POSTCODE_PROVIDER=nipost`, the official base URL, and the existing sandbox secret configured privately; database/CORS/PORT/APP_MODE settings are preserved. The public configuration endpoint reports `nipost`, `sandbox`, and lookup level 1. The initial deployed default-Reqwest requests hit the gateway's missing-User-Agent 403; the client compatibility fix adds an explicit application identifier. Final proxy/browser checks are recorded in [VALIDATION.md](VALIDATION.md).
 
 The final hosted proxy receives the expected negative validity result after the User-Agent fix (SmartRide maps it to `404/postcode_not_found`). The public Chrome negative-result check passed: no false verified badge, no fictional lookup address, a separate required customer address, and disabled creation. The hosting fix and UI behavior do not resolve the upstream dataset discrepancy.
+
+## Follow-up investigation — 27 October 2026
+
+See the [redacted support report](NIPOST-SUPPORT.md) and [request evidence](nipost-support-evidence.json). Fresh direct and deployed comparisons reproduce the sandbox negative results. Safe upstream diagnostics were added; upstream HTTP 404 now maps to service-unavailable rather than postcode-not-found. No real positive validity result or upstream fix has been verified.

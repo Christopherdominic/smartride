@@ -34,7 +34,44 @@ struct ErrorEnvelope {
 #[derive(Deserialize)]
 struct ErrorData {
     code: String,
-    message: String,
+}
+
+// Never record URLs, query values, credentials, messages, or response bodies.
+struct RequestDiagnostic {
+    started: Instant,
+    request_id: uuid::Uuid,
+    upstream_request_id: Option<uuid::Uuid>,
+    status: Option<u16>,
+    error_code: &'static str,
+    endpoint: &'static str,
+}
+impl Drop for RequestDiagnostic {
+    fn drop(&mut self) {
+        tracing::info!(
+            target: "backend::nipost",
+            endpoint = self.endpoint,
+            upstream_http_status = ?self.status,
+            nipost_error_code = self.error_code,
+            duration_ms = self.started.elapsed().as_millis() as u64,
+            request_id = %self.request_id,
+            upstream_request_id = ?self.upstream_request_id,
+            "NIPOST request completed"
+        );
+    }
+}
+fn diagnostic_error_code(code: &str) -> &'static str {
+    // An arbitrary upstream string could contain customer information or secrets.
+    match code {
+        "auth_required" => "auth_required",
+        "invalid_api_key" => "invalid_api_key",
+        "insufficient_credits" => "insufficient_credits",
+        "level_not_granted" => "level_not_granted",
+        "scope_not_granted" => "scope_not_granted",
+        "insufficient_scope" => "insufficient_scope",
+        "rate_limited" => "rate_limited",
+        "not_found" => "not_found",
+        _ => "unrecognized_upstream_error",
+    }
 }
 
 impl NipostProvider {
@@ -92,7 +129,7 @@ impl NipostProvider {
     }
     async fn request<T: serde::de::DeserializeOwned>(
         &self,
-        path: &str,
+        path: &'static str,
         query: &[(&str, &str)],
     ) -> Result<T, PostcodeError> {
         {
@@ -119,14 +156,29 @@ impl NipostProvider {
                 PostcodeError::Unavailable("NIPOST connection failed".into())
             }
         };
+        let mut diagnostic = RequestDiagnostic {
+            started: Instant::now(),
+            request_id: uuid::Uuid::new_v4(),
+            upstream_request_id: None,
+            status: None,
+            error_code: "transport_or_body_failure",
+            endpoint: path,
+        };
         let mut response = self
             .client
             .get(url)
             .query(query)
+            .header("X-Request-ID", diagnostic.request_id.to_string())
             .send()
             .await
             .map_err(transport)?;
         let status = response.status().as_u16();
+        diagnostic.status = Some(status);
+        diagnostic.upstream_request_id = ["x-request-id", "x-correlation-id"]
+            .iter()
+            .filter_map(|name| response.headers().get(*name)?.to_str().ok())
+            .find_map(|value| uuid::Uuid::parse_str(value).ok());
+        diagnostic.error_code = "malformed_response";
         if response.content_length().is_some_and(|n| n > 65536) {
             return Err(PostcodeError::MalformedResponse);
         }
@@ -140,18 +192,25 @@ impl NipostProvider {
         if !(200..300).contains(&status) {
             // Parse the official error envelope but never relay upstream text or credentials.
             if let Ok(error) = serde_json::from_slice::<ErrorEnvelope>(&bytes) {
-                let _ = (error.error.code, error.error.message);
+                diagnostic.error_code = diagnostic_error_code(&error.error.code);
+            } else {
+                diagnostic.error_code = "http_error_without_envelope";
             }
             return Err(match status {
                 401 => PostcodeError::AuthenticationFailed,
                 402 => PostcodeError::InsufficientCredits,
                 403 => PostcodeError::AccessDenied,
-                404 => PostcodeError::NotFound,
+                // An HTTP 404 may mean a missing API route, not an invalid postcode.
+                // Only a successful validity envelope can establish invalidity.
                 429 => PostcodeError::RateLimited,
                 _ => PostcodeError::Unavailable("NIPOST request failed".into()),
             });
         }
-        serde_json::from_slice(&bytes).map_err(|_| PostcodeError::MalformedResponse)
+        let result = serde_json::from_slice(&bytes).map_err(|_| PostcodeError::MalformedResponse);
+        if result.is_ok() {
+            diagnostic.error_code = "none";
+        }
+        result
     }
 }
 #[async_trait]
@@ -231,9 +290,18 @@ mod tests {
                     async move {
                         assert_eq!(headers["x-api-key"], "nipost_test_fixture");
                         assert_eq!(headers["user-agent"], "SmartRide/0.3");
+                        assert!(
+                            uuid::Uuid::parse_str(headers["x-request-id"].to_str().unwrap())
+                                .is_ok()
+                        );
                         assert_eq!(q.get("level").unwrap(), "1");
                         tokio::time::sleep(delay).await;
-                        (StatusCode::from_u16(status).unwrap(), content).into_response()
+                        (
+                            StatusCode::from_u16(status).unwrap(),
+                            [("x-request-id", "12345678-1234-4234-8234-123456789abc")],
+                            content,
+                        )
+                            .into_response()
                     }
                 },
             ),
@@ -277,6 +345,7 @@ mod tests {
             (402, "credits"),
             (403, "access denied"),
             (429, "limit"),
+            (404, "unavailable"),
             (500, "unavailable"),
         ] {
             let (url, task) = fixture(
@@ -298,6 +367,105 @@ mod tests {
             p.resolve("FC-01-A01-KP-27").await,
             Err(PostcodeError::Timeout)
         ));
+        task.abort();
+    }
+    #[tokio::test]
+    async fn negative_validity_is_distinct_from_http_errors() {
+        let (url, task) = fixture(
+            200,
+            r#"{"data":{"postcode":"FC-01-A01-KP-27","valid":false,"status":"not_found"}}"#,
+            Duration::ZERO,
+        )
+        .await;
+        let p = NipostProvider::new(url, "nipost_test_fixture".into()).unwrap();
+        assert!(matches!(
+            p.resolve("FC-01-A01-KP-27").await,
+            Err(PostcodeError::NotFound)
+        ));
+        assert!(matches!(
+            p.resolve("malformed").await,
+            Err(PostcodeError::InvalidPostcode)
+        ));
+        assert_eq!(p.budget.lock().unwrap().1, 1);
+        task.abort();
+        for body in [
+            r#"{"error":{"code":"not_found","message":"DO NOT LOG"}}"#,
+            "not json",
+        ] {
+            let (url, task) = fixture(404, body, Duration::ZERO).await;
+            let p = NipostProvider::new(url, "nipost_test_fixture".into()).unwrap();
+            assert!(matches!(
+                p.resolve("FC-01-A01-KP-27").await,
+                Err(PostcodeError::Unavailable(_))
+            ));
+            task.abort();
+        }
+    }
+    #[test]
+    fn diagnostic_codes_never_echo_arbitrary_upstream_content() {
+        assert_eq!(diagnostic_error_code("auth_required"), "auth_required");
+        assert_eq!(
+            diagnostic_error_code("nipost_test_secret customer address"),
+            "unrecognized_upstream_error"
+        );
+    }
+    #[tokio::test]
+    async fn diagnostics_include_metadata_without_sensitive_data() {
+        use std::io::Write;
+        use std::sync::{Arc, Mutex};
+        #[derive(Clone)]
+        struct Capture(Arc<Mutex<Vec<u8>>>);
+        impl Write for Capture {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let capture = Capture(Arc::new(Mutex::new(Vec::new())));
+        let writer = capture.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .without_time()
+            .with_ansi(false)
+            .with_writer(move || writer.clone())
+            .finish();
+        // A global subscriber observes events reliably across parallel Tokio tests.
+        tracing::subscriber::set_global_default(subscriber).unwrap();
+        let (url, task) = fixture(
+            403,
+            r#"{"error":{"code":"insufficient_scope","message":"PRIVATE CUSTOMER ADDRESS"}}"#,
+            Duration::ZERO,
+        )
+        .await;
+        let p = NipostProvider::new(url, "nipost_test_fixture".into()).unwrap();
+        assert!(matches!(
+            p.resolve("FC-01-A01-KP-27").await,
+            Err(PostcodeError::AccessDenied)
+        ));
+        let log = String::from_utf8(capture.0.lock().unwrap().clone()).unwrap();
+        for expected in [
+            "upstream_http_status=Some(403)",
+            "insufficient_scope",
+            "duration_ms=",
+            "12345678-1234-4234-8234-123456789abc",
+            "request_id=",
+            "/v1/lookup",
+        ] {
+            assert!(
+                log.contains(expected),
+                "missing diagnostic field: {expected}; log={log:?}"
+            );
+        }
+        for secret in [
+            "nipost_test_fixture",
+            "PRIVATE CUSTOMER ADDRESS",
+            "FC-01-A01-KP-27",
+            "level=1",
+        ] {
+            assert!(!log.contains(secret), "diagnostic leaked sensitive input");
+        }
         task.abort();
     }
     #[tokio::test]
