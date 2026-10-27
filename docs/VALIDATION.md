@@ -87,3 +87,12 @@ See [NIPOST integration](NIPOST.md) for exact results, schema/provenance rules, 
 - Final anonymous public Chrome check passed with `FRONTEND_URL=https://smartride-kappa.vercel.app TEST_POSTCODE=KT-14-B62-EB-16 EXPECT_INVALID_POSTCODE=1 node scripts/browser-smoke.mjs`: the real negative result is shown, no verified badge or fictional lookup address is displayed, a separate customer address is required, and unverified order creation remains disabled. This is a negative-result UI test, not successful real postcode verification.
 
 **Remaining external limitation:** the API still reports the user-confirmed dashboard-valid code as not found. No successful real NIPOST validity result or NIPOST-backed delivery completion is claimed. Positive L1 end-to-end coverage uses a local HTTP fixture; offline mock mode and the existing lifecycle remain tested and functional.
+
+## NIPOST upstream investigation — 27 October 2026
+
+- Compared private local/Render keys in memory: equal, sandbox. Render provider is `nipost`; local `.env` retains offline `mock`; base URLs match the official API.
+- Direct L1 sample `FC-01-A01-KP-27` and reported dashboard-valid `KT-14-B62-EB-16`: HTTP 200, `valid:false`, `status:not_found`. Public proxy: HTTP 404 / `postcode_not_found`. Broad autocomplete `FC`/`KT`: direct and proxy HTTP 200, zero suggestions. Missing direct API key: HTTP 401 / `auth_required`.
+- Fixed unrelated upstream HTTP 404 misclassification: now service failure (502), never proof of invalid postcode. Added safe status/error-code/duration/correlation diagnostics.
+- `cargo fmt --check`, 12 Rust regressions, debug build, full disposable-database L1 fixture workflow, Docker release build, and production-image workflow/security regressions passed.
+- Commit `81c43e3` / Render deployment `dep-dbg7pcbbc2fs739uv310` observed **live**. Public rejection checks passed. Hosted diagnostic metadata was observed and checked for absence of the key and test postcode inputs.
+- No real `valid:true` response obtained; live-key test skipped. See [redacted support report](NIPOST-SUPPORT.md) and [request evidence](nipost-support-evidence.json). No support message was sent externally.
